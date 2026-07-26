@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>境界AR · 360° 全景探索</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+    <header class="site-header">
+        <a class="brand" href="/" aria-label="境界AR首页">境界AR · 360° 全景探索</a>
+        <button id="auth-open" class="header-auth" type="button">注册 / 登录</button>
+    </header>
+    <main class="portal">
+        <section class="hero">
+            <p class="eyebrow">JINGJIE AR</p>
+            <h1>在每一次转身里，抵达另一个世界</h1>
+            <p>八个可自由浏览的 360° 全景场景。登录后可点赞、评论，并与其他探索者同场在线。</p>
+        </section>
+        <section aria-labelledby="scene-heading">
+            <div class="section-heading"><h2 id="scene-heading">全景场景</h2><span id="scene-total">加载中</span></div>
+            <div id="scene-grid" class="scene-grid" aria-live="polite"></div>
+        </section>
+    </main>
+
+    <div id="auth-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="auth-title">
+        <div class="modal-panel">
+            <button id="auth-close" class="icon-button modal-close" type="button" aria-label="关闭">×</button>
+            <p class="eyebrow">WELCOME</p><h2 id="auth-title">登录境界AR</h2>
+            <p class="muted">新用户名会自动注册并创建会话。</p>
+            <label>用户名<input id="auth-username" maxlength="64" autocomplete="username"></label>
+            <label>密码<input id="auth-password" type="password" maxlength="64" autocomplete="current-password"></label>
+            <button id="auth-submit" class="primary-button" type="button">注册 / 登录</button>
+            <p id="auth-message" class="form-message" role="status"></p>
+        </div>
+    </div>
+
+    <section id="viewer" class="viewer hidden" aria-label="全景浏览器">
+        <div id="aframe-host" class="aframe-host"></div>
+        <div class="viewer-gradient"></div>
+        <div class="viewer-title"><p id="viewer-kicker" class="eyebrow">360° PANORAMA</p><h2 id="viewer-name"></h2></div>
+        <div class="online-pill">在线 <strong id="online-count">0</strong></div>
+        <div class="viewer-controls top-controls">
+            <button id="fullscreen-button" type="button">全屏</button>
+            <button id="music-button" type="button">音乐未配置</button>
+        </div>
+        <div class="viewer-controls interaction-controls">
+            <button id="like-button" type="button">♡ <span id="like-count">0</span></button>
+            <button id="comments-button" type="button">评论</button>
+        </div>
+        <button id="exit-button" class="exit-button" type="button">← 退出场景</button>
+        <div id="toast" class="toast hidden" role="status"></div>
+        <audio id="scene-audio" preload="none"></audio>
+    </section>
+
+    <section id="comments-drawer" class="comments-drawer hidden" aria-label="评论">
+        <div class="drawer-header"><h2>评论</h2><button id="comments-close" class="icon-button" type="button" aria-label="关闭评论">×</button></div>
+        <div id="comment-list" class="comment-list"></div>
+        <button id="comments-more" class="comments-more hidden" type="button">加载更多评论</button>
+        <div class="comment-compose"><input id="comment-input" maxlength="300" placeholder="说点什么…"><button id="comment-submit" type="button">发布</button></div>
+    </section>
+
+    <script src="/vendor/aframe-1.6.0.min.js"></script>
+    <script src="/js/app.js"></script>
+</body>
+</html>
