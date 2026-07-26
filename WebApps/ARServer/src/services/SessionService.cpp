@@ -11,11 +11,20 @@ void SessionService::get(const std::string& token, const SessionStore::SessionCa
 void SessionService::enter(const std::string& token, const std::string& sceneId,
                            const SessionStore::BoolCallback& completion)
 {
+    enterDetailed(token, sceneId, [completion](EnterResult result) {
+        completion(result == kEnterOk);
+    });
+}
+
+void SessionService::enterDetailed(const std::string& token, const std::string& sceneId,
+                                   const EnterCallback& completion)
+{
     get(token, [this, token, sceneId, completion](const std::shared_ptr<Session>& session) {
-        if (!session || !store_ || sceneId.empty()) { completion(false); return; }
+        if (!session) { completion(kEnterSessionNotFound); return; }
+        if (!store_ || sceneId.empty()) { completion(kEnterUnavailable); return; }
         store_->enter(session->id, sceneId, [this, token, completion](bool ok) {
             if (ok) store_->invalidate(token);
-            completion(ok);
+            completion(ok ? kEnterOk : kEnterUnavailable);
         });
     });
 }

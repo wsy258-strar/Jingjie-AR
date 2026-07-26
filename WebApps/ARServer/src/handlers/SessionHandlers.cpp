@@ -82,9 +82,14 @@ void SessionHandlers::enter(const HttpRequest& request, const AsyncResponder& re
     }
     const std::string sceneId = scene->second;
     const std::string tokenValue = token->second;
-    service_->enter(tokenValue, sceneId, [this, responder, sceneId, tokenValue](bool ok) {
+    service_->enterDetailed(tokenValue, sceneId, [this, responder, sceneId, tokenValue](SessionService::EnterResult result) {
+        if (result == SessionService::kEnterSessionNotFound)
+        {
+            responder.send(makeApiError(HttpResponse::k401Unauthorized, "SESSION_EXPIRED", "session expired"));
+            return;
+        }
         HttpResponse response(false); response.setContentType("application/json; charset=utf-8");
-        if (!ok) { response.setStatusCode(HttpResponse::k503ServiceUnavailable); response.setBody("{\"error\":\"enter scene failed\"}"); responder.send(response); return; }
+        if (result != SessionService::kEnterOk) { response.setStatusCode(HttpResponse::k503ServiceUnavailable); response.setBody("{\"error\":\"enter scene failed\"}"); responder.send(response); return; }
         if (!presence_ || !cacheWorkers_)
         {
             response.setBody("{\"status\":\"ok\",\"scene_id\":\"" + JsonUtil::escape(sceneId) + "\",\"presence_available\":false}");

@@ -26,6 +26,7 @@
     function authHeaders() { return currentToken ? { 'Authorization': 'Bearer ' + currentToken } : {}; }
     function showToast(message) { var toast = $('toast'); toast.textContent = message; toast.classList.remove('hidden'); window.setTimeout(function () { toast.classList.add('hidden'); }, 2500); }
     function setAuthButton() { $('auth-open').textContent = currentToken ? (currentUser + ' · 已登录') : '注册 / 登录'; }
+    function clearExpiredLogin() { currentToken = ''; currentUser = ''; localStorage.removeItem('jingjie.token'); localStorage.removeItem('jingjie.user'); setAuthButton(); }
     function openAuthModal() { $('auth-modal').classList.remove('hidden'); $('auth-username').focus(); }
     function closeAuthModal() { $('auth-modal').classList.add('hidden'); }
     function requireLogin() { if (currentToken) return true; showToast('请先登录后再进行点赞/评论'); openAuthModal(); return false; }
@@ -44,7 +45,7 @@
     function enterSession(scene, epoch) {
         if (!currentToken) return;
         request('/api/session/enter?token=' + encodeURIComponent(currentToken) + '&scene=' + encodeURIComponent(scene.id), { method: 'POST' })
-            .then(function () { if (currentScene === scene && sceneEpoch === epoch) startPresence(); }).catch(function (error) { if (sceneEpoch === epoch) showToast(error.message); });
+            .then(function () { if (currentScene === scene && sceneEpoch === epoch) startPresence(); }).catch(function (error) { if (sceneEpoch !== epoch) return; if (error.status === 401) { clearExpiredLogin(); showToast('登录已失效，请重新登录'); openAuthModal(); return; } showToast(error.message); });
     }
     function heartbeat() {
         if (!currentToken || !currentScene) return;

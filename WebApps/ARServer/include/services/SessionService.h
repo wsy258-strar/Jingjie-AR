@@ -22,10 +22,14 @@ public:
 class SessionService
 {
 public:
+    enum EnterResult { kEnterOk, kEnterSessionNotFound, kEnterUnavailable };
+    typedef std::function<void(EnterResult)> EnterCallback;
     explicit SessionService(SessionStore* store) : store_(store) {}
     void get(const std::string& token, const SessionStore::SessionCallback& completion);
     void enter(const std::string& token, const std::string& sceneId,
                const SessionStore::BoolCallback& completion);
+    void enterDetailed(const std::string& token, const std::string& sceneId,
+                       const EnterCallback& completion);
     void exit(const std::string& token, const SessionStore::BoolCallback& completion);
 private:
     SessionStore* store_;
