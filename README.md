@@ -110,7 +110,7 @@ cp WebApps/ARServer/.env.example .env.arserver
 set -a; . ./.env.arserver; set +a
 MYSQL_PWD="$MYSQL_PASSWORD" mysql -h "$MYSQL_HOST" -P "$MYSQL_PORT" \
   -u "$MYSQL_USER" "$MYSQL_DATABASE" \
-  < sql/jingjie_ar_scene_interactions.sql
+  < sql/jingjie_ar_schema.sql
 ```
 
 环境变量示例见 [WebApps/ARServer/.env.example](WebApps/ARServer/.env.example)。其中 `AR_STATIC_ROOT` 默认是 `WebApps/ARServer/www`，因此请从项目根目录启动程序。
@@ -136,7 +136,7 @@ cmake --build build-debug --target ar_server -j2
 
 在浏览器打开 `http://127.0.0.1:8080`，可验证全景浏览、登录后点赞和评论、HTTP 心跳在线人数与评论抽屉。
 
-完整数据库迁移在 [sql/jingjie_ar_scene_interactions.sql](sql/jingjie_ar_scene_interactions.sql)，性能测试数据在 [benchmark/benchmark.md](benchmark/benchmark.md)。
+完整数据库初始化脚本在 [sql/jingjie_ar_schema.sql](sql/jingjie_ar_schema.sql)，性能测试数据在 [benchmark/benchmark.md](benchmark/benchmark.md)。
 
 ## 贡献与许可证
 
