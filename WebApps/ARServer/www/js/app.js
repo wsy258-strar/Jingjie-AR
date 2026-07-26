@@ -93,16 +93,19 @@
         highResolution.onerror = function () {};
         highResolution.src = scene.panorama_url;
     }
+    function beginPanoramaPreview(scene, sky, epoch, previewUrl) {
+        sky.addEventListener('materialtextureloaded', function () { loadHighResolutionPanorama(scene, sky, epoch, Date.now()); }, { once: true });
+        sky.setAttribute('src', previewUrl);
+    }
     function createAFrameScene(scene, epoch) {
         destroyAFrameScene();
         var host = $('aframe-host');
         if (!window.AFRAME) { showToast('全景播放器加载失败'); return; }
         var aframeScene = document.createElement('a-scene'); aframeScene.setAttribute('embedded', ''); aframeScene.setAttribute('xr-mode-ui', 'enabled: false'); aframeScene.setAttribute('device-orientation-permission-ui', 'enabled: true');
         var previewUrl = scene.preview_url || scene.panorama_url;
-        var sky = document.createElement('a-sky'); sky.setAttribute('src', previewUrl); sky.setAttribute('rotation', '0 -90 0');
-        sky.addEventListener('materialtextureloaded', function () { loadHighResolutionPanorama(scene, sky, epoch, Date.now()); }, { once: true });
+        var sky = document.createElement('a-sky'); sky.setAttribute('rotation', '0 -90 0');
         aframeScene.appendChild(sky); host.appendChild(aframeScene);
-        aframeScene.addEventListener('loaded', function () { if (aframeScene.camera) { aframeScene.camera.el.setAttribute('look-controls', 'reverseMouseDrag: true'); aframeScene.camera.fov = DEFAULT_PANORAMA_FOV; aframeScene.camera.updateProjectionMatrix(); bindPanoramaZoom(aframeScene); } });
+        aframeScene.addEventListener('loaded', function () { if (aframeScene.camera) { aframeScene.camera.el.setAttribute('look-controls', 'reverseMouseDrag: true'); aframeScene.camera.fov = DEFAULT_PANORAMA_FOV; aframeScene.camera.updateProjectionMatrix(); bindPanoramaZoom(aframeScene); } beginPanoramaPreview(scene, sky, epoch, previewUrl); });
     }
     function updateDetail(scene, epoch) {
         if (!currentScene) return;
