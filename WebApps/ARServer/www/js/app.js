@@ -72,12 +72,26 @@
         panoramaZoomCleanup = function () { host.removeEventListener('wheel', onWheel); host.removeEventListener('touchstart', onTouchStart); host.removeEventListener('touchmove', onTouchMove); host.removeEventListener('touchend', onTouchEnd); };
     }
     function destroyAFrameScene() { clearPanoramaZoom(); $('aframe-host').textContent = ''; }
-    function createAFrameScene(scene) {
+    function loadHighResolutionPanorama(scene, sky, epoch) {
+        var previewUrl = scene.preview_url || scene.panorama_url;
+        if (!scene.panorama_url || scene.panorama_url === previewUrl) return;
+        var highResolution = new Image();
+        highResolution.onload = function () {
+            if (sceneEpoch !== epoch || currentScene !== scene || !sky.parentNode) return;
+            sky.setAttribute('src', scene.panorama_url);
+        };
+        highResolution.onerror = function () {};
+        highResolution.src = scene.panorama_url;
+    }
+    function createAFrameScene(scene, epoch) {
         destroyAFrameScene();
         var host = $('aframe-host');
         if (!window.AFRAME) { showToast('全景播放器加载失败'); return; }
         var aframeScene = document.createElement('a-scene'); aframeScene.setAttribute('embedded', ''); aframeScene.setAttribute('xr-mode-ui', 'enabled: false'); aframeScene.setAttribute('device-orientation-permission-ui', 'enabled: true');
-        var sky = document.createElement('a-sky'); sky.setAttribute('src', scene.panorama_url); sky.setAttribute('rotation', '0 -90 0'); aframeScene.appendChild(sky); host.appendChild(aframeScene);
+        var previewUrl = scene.preview_url || scene.panorama_url;
+        var sky = document.createElement('a-sky'); sky.setAttribute('src', previewUrl); sky.setAttribute('rotation', '0 -90 0');
+        sky.addEventListener('materialtextureloaded', function () { loadHighResolutionPanorama(scene, sky, epoch); }, { once: true });
+        aframeScene.appendChild(sky); host.appendChild(aframeScene);
         aframeScene.addEventListener('loaded', function () { if (aframeScene.camera) { aframeScene.camera.el.setAttribute('look-controls', 'reverseMouseDrag: true'); aframeScene.camera.fov = DEFAULT_PANORAMA_FOV; aframeScene.camera.updateProjectionMatrix(); bindPanoramaZoom(aframeScene); } });
     }
     function updateDetail(scene, epoch) {
@@ -88,7 +102,7 @@
     function stopMusic() { var audio = $('scene-audio'); audio.pause(); audio.removeAttribute('src'); audio.load(); musicPlaying = false; }
 
     window.openScene = function (scene) {
-        var epoch = ++sceneEpoch; scene.liked = false; currentScene = scene; commentCursor = 0; $('viewer-name').textContent = scene.name; $('viewer-kicker').textContent = '360° PANORAMA'; $('online-count').textContent = '0'; $('like-count').textContent = '0'; $('music-button').disabled = true; $('music-button').textContent = '音乐未配置'; $('viewer').classList.remove('hidden'); createAFrameScene(scene); updateDetail(scene, epoch); window.history.pushState({ scene: scene.id }, '', '#scene=' + encodeURIComponent(scene.id)); enterSession(scene, epoch);
+        var epoch = ++sceneEpoch; scene.liked = false; currentScene = scene; commentCursor = 0; $('viewer-name').textContent = scene.name; $('viewer-kicker').textContent = '360° PANORAMA'; $('online-count').textContent = '0'; $('like-count').textContent = '0'; $('music-button').disabled = true; $('music-button').textContent = '音乐未配置'; $('viewer').classList.remove('hidden'); createAFrameScene(scene, epoch); updateDetail(scene, epoch); window.history.pushState({ scene: scene.id }, '', '#scene=' + encodeURIComponent(scene.id)); enterSession(scene, epoch);
     };
     window.closeScene = function () {
         var scene = currentScene; ++sceneEpoch; stopHeartbeat(); stopMusic(); $('comments-drawer').classList.add('hidden'); destroyAFrameScene(); $('viewer').classList.add('hidden'); currentScene = null;
