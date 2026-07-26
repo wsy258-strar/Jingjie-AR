@@ -93,6 +93,9 @@
         if (!scene.panorama_url || scene.panorama_url === previewUrl || !window.THREE) return;
         var loader = new THREE.TextureLoader();
         loader.load(scene.panorama_url, function (texture) {
+            if (THREE.SRGBColorSpace) texture.colorSpace = THREE.SRGBColorSpace;
+            else if (THREE.sRGBEncoding) texture.encoding = THREE.sRGBEncoding;
+            texture.needsUpdate = true;
             var remainingDelay = Math.max(0, PREVIEW_MIN_DISPLAY_MS - (Date.now() - previewReadyAt));
             window.setTimeout(function () { applyHighResolutionTexture(scene, previewSky, epoch, texture); }, remainingDelay);
         }, undefined, function () {});
