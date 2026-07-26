@@ -16,6 +16,7 @@ std::string jsonScene(const SceneInfo& scene)
     output << "{\"id\":\"" << JsonUtil::escape(scene.id)
            << "\",\"name\":\"" << JsonUtil::escape(scene.name)
            << "\",\"panorama_url\":\"" << JsonUtil::escape(scene.panoramaUrl)
+           << "\",\"preview_url\":\"" << JsonUtil::escape(scene.previewUrl)
            << "\",\"thumbnail_url\":\"" << JsonUtil::escape(scene.thumbnailUrl)
            << "\",\"music_url\":";
     if (scene.musicUrl.empty()) output << "null";
