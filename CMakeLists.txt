@@ -68,12 +68,19 @@ else()
 endif()
 
 option(ENABLE_REDIS_INTEGRATION_TESTS "Enable Redis session integration tests" OFF)
+option(BUILD_TESTS "Build project test targets when tests/ is available" ON)
 
 #添加子目录使用
 add_subdirectory(memory)
 add_subdirectory(src)
 
-enable_testing()
+set(BUILD_PROJECT_TESTS OFF)
+if(BUILD_TESTS AND EXISTS "${CMAKE_SOURCE_DIR}/tests/TestSupport.h")
+    enable_testing()
+    set(BUILD_PROJECT_TESTS ON)
+endif()
+
+if(BUILD_PROJECT_TESTS)
 add_executable(http_protocol_test tests/unit/http_protocol_test.cpp)
 target_include_directories(http_protocol_test PRIVATE ${CMAKE_SOURCE_DIR}/tests)
 target_link_libraries(http_protocol_test src_lib memory_lib ${LIBS})
@@ -213,6 +220,7 @@ target_include_directories(request_middleware_test PRIVATE ${CMAKE_SOURCE_DIR}/t
 target_sources(request_middleware_test PRIVATE WebApps/ARServer/src/middleware/AuthMiddleware.cpp)
 target_link_libraries(request_middleware_test src_lib memory_lib ${LIBS})
 add_test(NAME request_middleware_test COMMAND request_middleware_test)
+endif()
 
 if(MYSQL_LIB)
 add_executable(ar_server
@@ -274,7 +282,7 @@ install(FILES ${CMAKE_CURRENT_BINARY_DIR}/http_frameworkConfig.cmake
               ${CMAKE_CURRENT_BINARY_DIR}/http_frameworkConfigVersion.cmake
         DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/http_framework)
 
-if(ENABLE_REDIS_INTEGRATION_TESTS AND HIREDIS_LIB)
+if(BUILD_PROJECT_TESTS AND ENABLE_REDIS_INTEGRATION_TESTS AND HIREDIS_LIB)
     add_executable(redis_session_integration_test tests/integration/redis_session_integration.cpp)
     target_link_libraries(redis_session_integration_test src_lib http_framework_redis memory_lib ${LIBS})
     add_test(NAME redis_session_integration
@@ -282,7 +290,7 @@ if(ENABLE_REDIS_INTEGRATION_TESTS AND HIREDIS_LIB)
                      $<TARGET_FILE:redis_session_integration_test>)
 endif()
 
-if(MYSQL_LIB)
+if(BUILD_PROJECT_TESTS AND MYSQL_LIB)
 add_executable(session_dao_test tests/unit/session_dao_test.cpp)
     target_include_directories(session_dao_test PRIVATE ${CMAKE_SOURCE_DIR}/tests)
     target_link_libraries(session_dao_test src_lib ar_data memory_lib ${LIBS})
@@ -309,7 +317,7 @@ endif()
 add_test(NAME scene_interaction_service_test COMMAND scene_interaction_service_test)
 endif()
 
-if(MYSQL_LIB AND HIREDIS_LIB)
+if(BUILD_PROJECT_TESTS AND MYSQL_LIB AND HIREDIS_LIB)
     add_executable(session_cache_test tests/session_cache_test.cpp)
     target_link_libraries(session_cache_test src_lib ar_data memory_lib ${LIBS})
     add_test(NAME session_cache_test COMMAND session_cache_test)
