@@ -121,6 +121,11 @@ target_include_directories(task_worker_pool_test PRIVATE ${CMAKE_SOURCE_DIR}/tes
 target_link_libraries(task_worker_pool_test src_lib memory_lib ${LIBS})
 add_test(NAME task_worker_pool_test COMMAND task_worker_pool_test)
 
+add_executable(logger_level_test tests/unit/logger_level_test.cpp)
+target_include_directories(logger_level_test PRIVATE ${CMAKE_SOURCE_DIR}/tests)
+target_link_libraries(logger_level_test src_lib memory_lib ${LIBS})
+add_test(NAME logger_level_test COMMAND logger_level_test)
+
 add_executable(session_codec_test tests/unit/session_codec_test.cpp)
 target_include_directories(session_codec_test PRIVATE ${CMAKE_SOURCE_DIR}/tests)
 target_link_libraries(session_codec_test src_lib memory_lib ${LIBS})

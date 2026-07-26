@@ -1,6 +1,8 @@
 #include "Logger.h"
 #include "CurrentThread.h"
 
+#include <atomic>
+
 namespace ThreadInfo
 {
     thread_local char t_errnobuf[512]; // 每个线程独立的错误信息缓冲
@@ -44,6 +46,7 @@ static void defaultFlush()
 //defaultOutput 负责将格式化后的日志字节数据写入标准输出（stdout），defaultFlush 负责强制刷新输出缓冲区
 Logger::OutputFunc g_output = defaultOutput;
 Logger::FlushFunc g_flush = defaultFlush;
+std::atomic<int> g_logLevel(Logger::INFO);
 
 Logger::Impl::Impl(Logger::LogLevel level, int savedErrno, const char *filename, int line)
     : time_(Timestamp::now()),
@@ -100,8 +103,11 @@ Logger::~Logger()
 {
     impl_.finish();
     const LogStream::Buffer &buffer = stream().buffer();
-    // 输出(默认项终端输出)
-    g_output(buffer.data(), buffer.length());
+    if (impl_.level_ >= logLevel())
+    {
+        // 输出(默认项终端输出)
+        g_output(buffer.data(), buffer.length());
+    }
     // FATAL情况终止程序
     if (impl_.level_ == FATAL)
     {
@@ -118,4 +124,14 @@ void Logger::setOutput(OutputFunc out)
 void Logger::setFlush(FlushFunc flush)
 {
     g_flush = flush;
+}
+
+void Logger::setLogLevel(LogLevel level)
+{
+    g_logLevel.store(static_cast<int>(level));
+}
+
+Logger::LogLevel Logger::logLevel()
+{
+    return static_cast<LogLevel>(g_logLevel.load());
 }

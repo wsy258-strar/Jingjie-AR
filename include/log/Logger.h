@@ -57,6 +57,8 @@ public:
     using FlushFunc = std::function<void()>;
     static void setOutput(OutputFunc);
     static void setFlush(FlushFunc);
+    static void setLogLevel(LogLevel level);
+    static LogLevel logLevel();
 
 private:
     /*
