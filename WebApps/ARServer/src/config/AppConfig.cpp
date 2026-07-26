@@ -1,0 +1,114 @@
+#include <config/AppConfig.h>
+
+#include <cstdlib>
+#include <cerrno>
+#include <climits>
+
+namespace {
+
+bool parseUnsigned(const std::string& text, unsigned long long maximum,
+                   unsigned long long* value)
+{
+    if (text.empty() || !value) return false;
+    for (size_t index = 0; index < text.size(); ++index)
+        if (text[index] < '0' || text[index] > '9') return false;
+    errno = 0;
+    char* end = 0;
+    unsigned long long parsed = std::strtoull(text.c_str(), &end, 10);
+    if (errno == ERANGE || !end || *end != '\0' || parsed > maximum) return false;
+    *value = parsed;
+    return true;
+}
+
+void readString(const std::map<std::string, std::string>& environment, const char* name,
+                std::string* value)
+{
+    std::map<std::string, std::string>::const_iterator found = environment.find(name);
+    if (found != environment.end() && !found->second.empty()) *value = found->second;
+}
+
+bool readNumber(const std::map<std::string, std::string>& environment, const char* name,
+                unsigned long long minimum, unsigned long long maximum,
+                unsigned long long* value, std::vector<std::string>* errors)
+{
+    std::map<std::string, std::string>::const_iterator found = environment.find(name);
+    if (found == environment.end() || found->second.empty()) return true;
+    unsigned long long parsed = 0;
+    if (!parseUnsigned(found->second, maximum, &parsed) || parsed < minimum)
+    {
+        errors->push_back(std::string(name) + " must be an integer between " +
+                          std::to_string(minimum) + " and " + std::to_string(maximum));
+        return false;
+    }
+    *value = parsed;
+    return true;
+}
+
+} // namespace
+
+namespace ar {
+
+AppConfig::AppConfig()
+    : host("0.0.0.0"), port(8080), threads(3), cacheCapacity(200), dbWorkers(4),
+      cacheWorkers(4), maxBodyBytes(1048576), staticRoot("WebApps/ARServer/www"),
+      mysqlHost("127.0.0.1"), mysqlPort(3306), mysqlUser("ar_app"),
+      mysqlDatabase("webserver"), mysqlPoolSize(8), redisHost("127.0.0.1"),
+      redisPort(6379), redisPoolSize(8), sessionTtlSeconds(1800), testDbDelayMs(0) {}
+
+bool AppConfig::fromMap(const std::map<std::string, std::string>& environment, bool mysqlEnabled,
+                        AppConfig* config, std::vector<std::string>* errors)
+{
+    if (!config || !errors) return false;
+    *config = AppConfig(); errors->clear();
+    readString(environment, "AR_HOST", &config->host);
+    readString(environment, "AR_STATIC_ROOT", &config->staticRoot);
+    readString(environment, "MYSQL_HOST", &config->mysqlHost);
+    readString(environment, "MYSQL_USER", &config->mysqlUser);
+    readString(environment, "MYSQL_DATABASE", &config->mysqlDatabase);
+    readString(environment, "REDIS_HOST", &config->redisHost);
+    std::map<std::string, std::string>::const_iterator password = environment.find("MYSQL_PASSWORD");
+    if (password != environment.end()) config->mysqlPassword = password->second;
+    unsigned long long value = config->port;
+    if (readNumber(environment, "AR_PORT", 1, 65535, &value, errors)) config->port = static_cast<uint16_t>(value);
+    value = config->threads;
+    if (readNumber(environment, "AR_THREADS", 1, INT_MAX, &value, errors)) config->threads = static_cast<int>(value);
+    value = config->cacheCapacity;
+    if (readNumber(environment, "AR_CACHE_CAPACITY", 1, INT_MAX, &value, errors)) config->cacheCapacity = static_cast<int>(value);
+    value = config->mysqlPort;
+    if (readNumber(environment, "MYSQL_PORT", 1, 65535, &value, errors)) config->mysqlPort = static_cast<uint16_t>(value);
+    value = config->mysqlPoolSize;
+    if (readNumber(environment, "MYSQL_POOL_SIZE", 1, INT_MAX, &value, errors)) config->mysqlPoolSize = static_cast<int>(value);
+    value = config->redisPort;
+    if (readNumber(environment, "REDIS_PORT", 1, 65535, &value, errors)) config->redisPort = static_cast<uint16_t>(value);
+    value = config->redisPoolSize;
+    if (readNumber(environment, "REDIS_POOL_SIZE", 1, INT_MAX, &value, errors)) config->redisPoolSize = static_cast<int>(value);
+    value = config->dbWorkers;
+    if (readNumber(environment, "DB_WORKERS", 1, INT_MAX, &value, errors)) config->dbWorkers = static_cast<int>(value);
+    value = config->cacheWorkers;
+    if (readNumber(environment, "CACHE_WORKERS", 1, INT_MAX, &value, errors)) config->cacheWorkers = static_cast<int>(value);
+    value = config->sessionTtlSeconds;
+    if (readNumber(environment, "SESSION_TTL_SECONDS", 1, INT_MAX, &value, errors)) config->sessionTtlSeconds = static_cast<int>(value);
+    value = config->maxBodyBytes;
+    if (readNumber(environment, "MAX_BODY_BYTES", 1, static_cast<unsigned long long>(SIZE_MAX), &value, errors)) config->maxBodyBytes = static_cast<size_t>(value);
+    value = config->testDbDelayMs;
+    if (readNumber(environment, "AR_TEST_DB_DELAY_MS", 0, 1000, &value, errors)) config->testDbDelayMs = static_cast<int>(value);
+    if (mysqlEnabled && config->mysqlPassword.empty()) errors->push_back("MYSQL_PASSWORD is required");
+    return errors->empty();
+}
+
+bool AppConfig::fromEnvironment(bool mysqlEnabled, AppConfig* config, std::vector<std::string>* errors)
+{
+    const char* names[] = {"AR_HOST", "AR_PORT", "AR_THREADS", "AR_STATIC_ROOT", "AR_CACHE_CAPACITY",
+                           "MYSQL_HOST", "MYSQL_PORT", "MYSQL_USER", "MYSQL_PASSWORD", "MYSQL_DATABASE",
+                           "MYSQL_POOL_SIZE", "REDIS_HOST", "REDIS_PORT", "REDIS_POOL_SIZE", "DB_WORKERS",
+                           "CACHE_WORKERS", "SESSION_TTL_SECONDS", "MAX_BODY_BYTES", "AR_TEST_DB_DELAY_MS"};
+    std::map<std::string, std::string> environment;
+    for (size_t index = 0; index < sizeof(names) / sizeof(names[0]); ++index)
+    {
+        const char* value = std::getenv(names[index]);
+        if (value) environment[names[index]] = value;
+    }
+    return fromMap(environment, mysqlEnabled, config, errors);
+}
+
+} // namespace ar

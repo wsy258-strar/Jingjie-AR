@@ -1,0 +1,37 @@
+#pragma once
+
+#include <cstdint>
+#include <map>
+#include <string>
+#include <vector>
+
+namespace ar {
+
+struct AppConfig
+{
+    AppConfig();
+    std::string host;
+    uint16_t port;
+    int threads;
+    int cacheCapacity;
+    int dbWorkers;
+    int cacheWorkers;
+    size_t maxBodyBytes;
+    std::string staticRoot;
+    std::string mysqlHost;
+    uint16_t mysqlPort;
+    std::string mysqlUser;
+    std::string mysqlPassword;
+    std::string mysqlDatabase;
+    int mysqlPoolSize;
+    std::string redisHost;
+    uint16_t redisPort;
+    int redisPoolSize;
+    int sessionTtlSeconds;
+    int testDbDelayMs;
+    static bool fromEnvironment(bool mysqlEnabled, AppConfig* config, std::vector<std::string>* errors);
+    static bool fromMap(const std::map<std::string, std::string>& environment, bool mysqlEnabled,
+                        AppConfig* config, std::vector<std::string>* errors);
+};
+
+} // namespace ar
