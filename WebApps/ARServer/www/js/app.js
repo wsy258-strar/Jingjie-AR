@@ -72,16 +72,19 @@
         panoramaZoomCleanup = function () { host.removeEventListener('wheel', onWheel); host.removeEventListener('touchstart', onTouchStart); host.removeEventListener('touchmove', onTouchMove); host.removeEventListener('touchend', onTouchEnd); };
     }
     function destroyAFrameScene() { clearPanoramaZoom(); $('aframe-host').textContent = ''; }
-    function loadHighResolutionPanorama(scene, sky, epoch) {
+    function loadHighResolutionPanorama(scene, previewSky, aframeScene, epoch) {
         var previewUrl = scene.preview_url || scene.panorama_url;
         if (!scene.panorama_url || scene.panorama_url === previewUrl) return;
-        var highResolution = new Image();
-        highResolution.onload = function () {
-            if (sceneEpoch !== epoch || currentScene !== scene || !sky.parentNode) return;
-            sky.setAttribute('src', scene.panorama_url);
-        };
-        highResolution.onerror = function () {};
-        highResolution.src = scene.panorama_url;
+        var highSky = document.createElement('a-sky');
+        highSky.setAttribute('src', scene.panorama_url);
+        highSky.setAttribute('rotation', '0 -90 0');
+        highSky.setAttribute('visible', 'false');
+        highSky.addEventListener('materialtextureloaded', function () {
+            if (sceneEpoch !== epoch || currentScene !== scene || !previewSky.parentNode) return;
+            highSky.setAttribute('visible', 'true');
+            previewSky.parentNode.removeChild(previewSky);
+        }, { once: true });
+        aframeScene.appendChild(highSky);
     }
     function createAFrameScene(scene, epoch) {
         destroyAFrameScene();
@@ -90,7 +93,7 @@
         var aframeScene = document.createElement('a-scene'); aframeScene.setAttribute('embedded', ''); aframeScene.setAttribute('xr-mode-ui', 'enabled: false'); aframeScene.setAttribute('device-orientation-permission-ui', 'enabled: true');
         var previewUrl = scene.preview_url || scene.panorama_url;
         var sky = document.createElement('a-sky'); sky.setAttribute('src', previewUrl); sky.setAttribute('rotation', '0 -90 0');
-        sky.addEventListener('materialtextureloaded', function () { loadHighResolutionPanorama(scene, sky, epoch); }, { once: true });
+        sky.addEventListener('materialtextureloaded', function () { loadHighResolutionPanorama(scene, sky, aframeScene, epoch); }, { once: true });
         aframeScene.appendChild(sky); host.appendChild(aframeScene);
         aframeScene.addEventListener('loaded', function () { if (aframeScene.camera) { aframeScene.camera.el.setAttribute('look-controls', 'reverseMouseDrag: true'); aframeScene.camera.fov = DEFAULT_PANORAMA_FOV; aframeScene.camera.updateProjectionMatrix(); bindPanoramaZoom(aframeScene); } });
     }
