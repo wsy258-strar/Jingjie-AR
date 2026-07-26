@@ -9,6 +9,7 @@
     var sceneEpoch = 0;
     var commentCursor = 0;
     var MIN_PANORAMA_FOV = 35, MAX_PANORAMA_FOV = 100, DEFAULT_PANORAMA_FOV = 80;
+    var PREVIEW_MIN_DISPLAY_MS = 5000;
     var panoramaZoomCleanup = null;
     var $ = function (id) { return document.getElementById(id); };
 
@@ -72,18 +73,22 @@
         panoramaZoomCleanup = function () { host.removeEventListener('wheel', onWheel); host.removeEventListener('touchstart', onTouchStart); host.removeEventListener('touchmove', onTouchMove); host.removeEventListener('touchend', onTouchEnd); };
     }
     function destroyAFrameScene() { clearPanoramaZoom(); $('aframe-host').textContent = ''; }
-    function loadHighResolutionPanorama(scene, previewSky, epoch) {
+    function applyHighResolutionTexture(scene, previewSky, epoch, image) {
+        if (sceneEpoch !== epoch || currentScene !== scene || !previewSky.parentNode) return;
+        var mesh = previewSky.getObject3D('mesh');
+        if (!mesh || !mesh.material || !window.THREE) return;
+        var texture = new THREE.Texture(image);
+        texture.needsUpdate = true;
+        mesh.material.map = texture;
+        mesh.material.needsUpdate = true;
+    }
+    function loadHighResolutionPanorama(scene, previewSky, epoch, previewReadyAt) {
         var previewUrl = scene.preview_url || scene.panorama_url;
         if (!scene.panorama_url || scene.panorama_url === previewUrl) return;
         var highResolution = new Image();
         highResolution.onload = function () {
-            if (sceneEpoch !== epoch || currentScene !== scene || !previewSky.parentNode) return;
-            var mesh = previewSky.getObject3D('mesh');
-            if (!mesh || !mesh.material || !window.THREE) return;
-            var texture = new THREE.Texture(highResolution);
-            texture.needsUpdate = true;
-            mesh.material.map = texture;
-            mesh.material.needsUpdate = true;
+            var remainingDelay = Math.max(0, PREVIEW_MIN_DISPLAY_MS - (Date.now() - previewReadyAt));
+            window.setTimeout(function () { applyHighResolutionTexture(scene, previewSky, epoch, highResolution); }, remainingDelay);
         };
         highResolution.onerror = function () {};
         highResolution.src = scene.panorama_url;
@@ -95,7 +100,7 @@
         var aframeScene = document.createElement('a-scene'); aframeScene.setAttribute('embedded', ''); aframeScene.setAttribute('xr-mode-ui', 'enabled: false'); aframeScene.setAttribute('device-orientation-permission-ui', 'enabled: true');
         var previewUrl = scene.preview_url || scene.panorama_url;
         var sky = document.createElement('a-sky'); sky.setAttribute('src', previewUrl); sky.setAttribute('rotation', '0 -90 0');
-        sky.addEventListener('materialtextureloaded', function () { loadHighResolutionPanorama(scene, sky, epoch); }, { once: true });
+        sky.addEventListener('materialtextureloaded', function () { loadHighResolutionPanorama(scene, sky, epoch, Date.now()); }, { once: true });
         aframeScene.appendChild(sky); host.appendChild(aframeScene);
         aframeScene.addEventListener('loaded', function () { if (aframeScene.camera) { aframeScene.camera.el.setAttribute('look-controls', 'reverseMouseDrag: true'); aframeScene.camera.fov = DEFAULT_PANORAMA_FOV; aframeScene.camera.updateProjectionMatrix(); bindPanoramaZoom(aframeScene); } });
     }
