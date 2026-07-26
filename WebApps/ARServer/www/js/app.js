@@ -58,6 +58,10 @@
     function startPresence() { stopHeartbeat(); heartbeat(); updateMembers(); heartbeatTimer = window.setInterval(heartbeat, 10000); membersTimer = window.setInterval(updateMembers, 10000); }
     function stopHeartbeat() { if (heartbeatTimer) window.clearInterval(heartbeatTimer); if (membersTimer) window.clearInterval(membersTimer); heartbeatTimer = null; membersTimer = null; }
     function clearPanoramaZoom() { if (panoramaZoomCleanup) panoramaZoomCleanup(); panoramaZoomCleanup = null; }
+    function setPanoramaLoading(visible, epoch) {
+        if (typeof epoch !== 'undefined' && sceneEpoch !== epoch) return;
+        $('panorama-loading').classList.toggle('hidden', !visible);
+    }
     function bindPanoramaZoom(aframeScene) {
         clearPanoramaZoom();
         var host = $('aframe-host'), lastDistance = 0, camera = aframeScene.camera;
@@ -88,6 +92,7 @@
         mesh.material.map = texture;
         mesh.material.needsUpdate = true;
         if (previewTexture && previewTexture !== texture) previewTexture.dispose();
+        setPanoramaLoading(false, epoch);
     }
     function loadHighResolutionPanorama(scene, previewSky, epoch, previewReadyAt) {
         var previewUrl = scene.preview_url || scene.panorama_url;
@@ -99,12 +104,16 @@
             texture.needsUpdate = true;
             var remainingDelay = Math.max(0, PREVIEW_MIN_DISPLAY_MS - (Date.now() - previewReadyAt));
             window.setTimeout(function () { applyHighResolutionTexture(scene, previewSky, epoch, texture); }, remainingDelay);
-        }, undefined, function () {});
+        }, undefined, function () { setPanoramaLoading(false, epoch); });
     }
     function beginPanoramaPreview(scene, assets, sky, epoch, previewUrl, previewAssetId) {
         var previewImage = createPanoramaAssetImage(previewAssetId, previewUrl);
         assets.appendChild(previewImage);
-        sky.addEventListener('materialtextureloaded', function () { loadHighResolutionPanorama(scene, sky, epoch, Date.now()); }, { once: true });
+        sky.addEventListener('materialtextureloaded', function () {
+            setPanoramaLoading(true, epoch);
+            if (!scene.panorama_url || scene.panorama_url === previewUrl || !window.THREE) { setPanoramaLoading(false, epoch); return; }
+            loadHighResolutionPanorama(scene, sky, epoch, Date.now());
+        }, { once: true });
         previewImage.addEventListener('error', function () {
             if (sceneEpoch === epoch && currentScene === scene && sky.parentNode) sky.setAttribute('src', scene.panorama_url);
         }, { once: true });
@@ -135,7 +144,7 @@
         var epoch = ++sceneEpoch; scene.liked = false; currentScene = scene; commentCursor = 0; $('viewer-name').textContent = scene.name; $('viewer-kicker').textContent = '360° PANORAMA'; $('online-count').textContent = '0'; $('like-count').textContent = '0'; $('music-button').disabled = true; $('music-button').textContent = '音乐未配置'; $('viewer').classList.remove('hidden'); createAFrameScene(scene, epoch); updateDetail(scene, epoch); window.history.pushState({ scene: scene.id }, '', '#scene=' + encodeURIComponent(scene.id)); enterSession(scene, epoch);
     };
     window.closeScene = function () {
-        var scene = currentScene; ++sceneEpoch; stopHeartbeat(); stopMusic(); $('comments-drawer').classList.add('hidden'); destroyAFrameScene(); $('viewer').classList.add('hidden'); currentScene = null;
+        var scene = currentScene; ++sceneEpoch; setPanoramaLoading(false); stopHeartbeat(); stopMusic(); $('comments-drawer').classList.add('hidden'); destroyAFrameScene(); $('viewer').classList.add('hidden'); currentScene = null;
         if (currentToken && scene) request('/api/session/exit?token=' + encodeURIComponent(currentToken), { method: 'POST' }).catch(function () {});
         if (location.hash.indexOf('#scene=') === 0) history.replaceState({}, '', location.pathname);
     };

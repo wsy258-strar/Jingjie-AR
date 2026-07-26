@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>境界AR · 360° 全景探索</title>
     <link rel="stylesheet" href="/css/style.css">
+    <link rel="stylesheet" href="/css/panorama-loading.css">
 </head>
 <body>
     <header class="site-header">
@@ -38,6 +39,7 @@
     <section id="viewer" class="viewer hidden" aria-label="全景浏览器">
         <div id="aframe-host" class="aframe-host"></div>
         <div class="viewer-gradient"></div>
+        <div id="panorama-loading" class="panorama-loading hidden" role="status">高清加载中</div>
         <div class="viewer-title"><p id="viewer-kicker" class="eyebrow">360° PANORAMA</p><h2 id="viewer-name"></h2></div>
         <div class="online-pill">在线 <strong id="online-count">0</strong></div>
         <div class="viewer-controls top-controls">
