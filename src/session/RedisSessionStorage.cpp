@@ -1,3 +1,4 @@
+// Redis 会话读写实现：保持序列化格式与 TTL 计算集中，避免调用点各自拼装键值。
 #include <session/RedisSessionStorage.h>
 
 #include <cache/RedisConnectionPool.h>

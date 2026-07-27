@@ -1,3 +1,4 @@
+// 访问日志实现：认证查询参数仅在日志视图中脱敏，业务处理仍使用原始请求。
 #include <middleware/AccessLogMiddleware.h>
 
 #include <algorithm>

@@ -1,3 +1,4 @@
+// 两级缓存：优先读取进程内缓存，未命中时回源 Redis，并在成功读取后填充上层缓存。
 #pragma once
 
 #include <string>

@@ -1,3 +1,4 @@
+// HTTP 会话值对象：保存令牌、用户标识与过期时间，不负责持久化或认证决策。
 #pragma once
 
 #include <cstdint>

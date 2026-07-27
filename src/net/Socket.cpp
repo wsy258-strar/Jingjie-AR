@@ -1,3 +1,4 @@
+// Socket RAII 与套接字选项设置实现。
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/socket.h>

@@ -1,3 +1,4 @@
+// 场景互动数据访问对象：以参数绑定执行点赞和评论持久化，避免业务层直接操作 MySQL C API。
 #pragma once
 
 #include <base/noncopyable.h>

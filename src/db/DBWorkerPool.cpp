@@ -1,3 +1,4 @@
+// 数据库工作线程实现：工作线程独占借来的连接并在任务结束后归还。
 #include "db/DBWorkerPool.h"
 #include "db/MySQLConnectionPool.h"
 #include "Logger.h"

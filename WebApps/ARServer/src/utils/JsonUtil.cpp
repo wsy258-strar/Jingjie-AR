@@ -1,3 +1,4 @@
+// JSON 字符串转义、字段提取与轻量序列化实现。
 #include <utils/JsonUtil.h>
 
 namespace ar {

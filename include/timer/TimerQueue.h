@@ -1,3 +1,4 @@
+// 基于 timerfd 与有序集合的定时器队列；所有内部集合操作限定在所属 EventLoop 线程。
 #ifndef TIMER_QUEUE_H
 #define TIMER_QUEUE_H
 
@@ -23,6 +24,10 @@ public:
     ~TimerQueue();
 
     // 插入定时器（回调函数，到期时间，是否重复）
+    /**
+     * 线程安全地提交定时任务：实际插入操作被转发至所属 EventLoop，
+     * 以保证 timers_ 与 timerfd_ 只在一个 I/O 线程中修改。
+     */
     void addTimer(TimerCallback cb,
                   Timestamp when,
                   double interval);
@@ -33,6 +38,7 @@ private:
 
     // 在本loop中添加定时器
     // 线程安全
+    /// 仅在 loop_ 线程执行；TimerQueue 接管 timer 的所有权。
     void addTimerInLoop(Timer* timer);
 
     // 定时器读事件触发的函数

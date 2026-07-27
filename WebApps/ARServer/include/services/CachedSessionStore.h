@@ -1,3 +1,4 @@
+// 带缓存回源能力的会话存储：Redis 优先，失败或未命中时回源持久化 DAO。
 #pragma once
 
 #include <services/SessionService.h>

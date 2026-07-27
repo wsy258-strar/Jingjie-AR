@@ -1,3 +1,4 @@
+// epoll_ctl/epoll_wait 适配实现，维护 fd 到 Channel 的注册映射。
 #include <errno.h>
 #include <unistd.h>
 #include <string.h>

@@ -1,3 +1,4 @@
+// 请求 ID 生成与写入响应头实现。
 #include <middleware/RequestIdMiddleware.h>
 
 #include <iomanip>

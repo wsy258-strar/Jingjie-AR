@@ -1,3 +1,4 @@
+// EventLoopThreadPool 实现：负责子循环创建、初始化回调和轮询选择。
 #include <memory>
 
 #include <EventLoopThreadPool.h>

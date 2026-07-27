@@ -1,3 +1,4 @@
+// Redis 连接池实现；编译期开关关闭时保留空实现以维持可选依赖边界。
 #ifdef HAS_REDIS
 #include "cache/RedisConnectionPool.h"
 #include "Logger.h"

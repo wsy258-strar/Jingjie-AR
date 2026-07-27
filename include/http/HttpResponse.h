@@ -1,3 +1,4 @@
+// HTTP/1.x 响应构建器：路由填充语义数据，协议层统一序列化并决定连接是否关闭。
 #pragma once
 
 #include <string>
@@ -50,6 +51,7 @@ public:
     { addHeader("Content-Type", contentType); }
 
     void setBody(const std::string& body) { body_ = body; }
+    /// 标记文件响应；TcpConnection 后续通过 sendfile 分段发送该区间。
     void setFile(const std::string& path, off_t offset, size_t count)
     { filePath_ = path; fileOffset_ = offset; fileCount_ = count; }
     bool hasFile() const { return !filePath_.empty(); }

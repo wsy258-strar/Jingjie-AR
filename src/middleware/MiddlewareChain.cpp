@@ -1,3 +1,4 @@
+// 中间件链执行实现：after 阶段与已执行的 before 阶段严格反向配对。
 #include <middleware/MiddlewareChain.h>
 
 #include <exception>

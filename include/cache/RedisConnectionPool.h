@@ -1,3 +1,4 @@
+// Redis 连接池：集中维护可复用客户端连接，并以借还操作限定连接的独占使用期。
 #pragma once
 
 #ifdef HAS_REDIS

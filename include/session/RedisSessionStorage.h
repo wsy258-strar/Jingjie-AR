@@ -1,3 +1,4 @@
+// Redis 会话存储实现：将会话序列化到共享缓存，并在连接不可用时向调用方报告失败。
 #pragma once
 
 #include <session/SessionStorage.h>

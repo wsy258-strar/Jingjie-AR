@@ -1,3 +1,4 @@
+// Channel 将一个文件描述符的关注事件与回调绑定，是 EventLoop 和 Poller 之间的桥梁。
 #pragma once
 
 #include <functional>
@@ -15,6 +16,7 @@ class EventLoop;
 class  Channel : noncopyable
 {
 public:
+    /// Channel 不拥有 fd；fd 的关闭责任由 Socket 或其他资源所有者承担。
     using EventCallback = std::function<void()>; // muduo仍使用typedef
     using ReadEventCallback = std::function<void(Timestamp)>;
 
@@ -22,6 +24,7 @@ public:
     ~Channel();
 
     // fd得到Poller通知以后 处理事件 handleEvent在EventLoop::loop()中调用
+    /// 由 EventLoop 在 Poller 返回活动事件后调用，按错误、读、写、关闭语义分发回调。
     void handleEvent(Timestamp receiveTime);
 
     // 设置回调函数对象,提供“注册方法”（用来存回调函数）,这就是注册方法，执行这个方法的过程就是「注册」
@@ -31,6 +34,7 @@ public:
     void setErrorCallback(EventCallback cb) { errorCallback_ = std::move(cb); }
 
     // 防止当channel被手动remove掉 channel还在执行回调操作
+    /// 观察上层对象生命周期，防止回调执行期间连接已被销毁。
     void tie(const std::shared_ptr<void> &);
 
     int fd() const { return fd_; }

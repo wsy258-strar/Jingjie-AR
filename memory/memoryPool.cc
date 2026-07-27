@@ -1,3 +1,4 @@
+// 槽位内存池实现：按对象大小复用固定槽位，降低小对象频繁向系统申请内存的成本。
 #include "memoryPool.h"
 
 namespace memoryPool 
@@ -8,6 +9,7 @@ MemoryPool::MemoryPool(size_t BlockSize)
 
 MemoryPool::~MemoryPool()
 {
+    // 内存块由池统一拥有；对象归还后只进入空闲链表，真正释放统一延后至池销毁。
     // 把连续的block删除
     Slot* cur = firstBlock_;
     while (cur)
@@ -46,6 +48,7 @@ void* MemoryPool::allocate()
         }//离开作用域 → lock_guard析构 → 自动调用 mutexForFreeList_.unlock() 解锁
     }
 
+    // 从当前块取新槽位的游标只能由一个线程推进，避免两个线程获得同一槽位。
     Slot* temp;
     {   
         std::lock_guard<std::mutex> lock(mutexForBlock_);
@@ -78,6 +81,7 @@ void MemoryPool::allocateNewBlock()
 {   
     //std::cout << "申请一块内存块，SlotSize: " << SlotSize_ << std::endl;
     // 头插法插入新的内存块
+    // 块首槽只用于串联所有块，实际对象槽从对齐后的 body 开始。
     void* newBlock = operator new(BlockSize_);
     reinterpret_cast<Slot*>(newBlock)->next = firstBlock_;
     firstBlock_ = reinterpret_cast<Slot*>(newBlock);
@@ -112,6 +116,7 @@ void HashBucket::initMemoryPool()
 // 单例模式
 MemoryPool& HashBucket::getMemoryPool(int index)
 {
+    // call_once 使首次分配也安全，调用方无需额外显式初始化。
     static MemoryPool memoryPool[MEMORY_POOL_NUM]; //64个内存池，每一个Block就是一个内存池
     static std::once_flag initialized;
     std::call_once(initialized, []() {

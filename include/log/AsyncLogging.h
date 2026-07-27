@@ -1,3 +1,4 @@
+// 异步日志前端：业务线程只追加内存缓冲，后台线程负责批量落盘以降低 I/O 抖动。
 #pragma once
 
 #include "../base/noncopyable.h"

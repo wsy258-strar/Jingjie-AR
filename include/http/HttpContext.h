@@ -1,3 +1,4 @@
+// HTTP/1.x 增量解析上下文：按 TCP 字节流推进请求行、头部和消息体状态机。
 #pragma once
 
 #include <http/HttpRequest.h>
@@ -58,6 +59,7 @@ public:
 
     /// 是否已解析出一个完整请求
     bool gotAll() const { return state_ == kGotCompleteRequest; }
+    /// 解析失败后的精确类别，供 HttpServer 映射为合适的客户端错误响应。
     ParseError error() const { return error_; }
     void setLimits(const HttpLimits& limits) { limits_ = limits; }
 

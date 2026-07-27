@@ -1,3 +1,4 @@
+// Poller 公共状态实现：记录当前事件循环已注册的 Channel。
 #include <Poller.h>
 #include <Channel.h>
 

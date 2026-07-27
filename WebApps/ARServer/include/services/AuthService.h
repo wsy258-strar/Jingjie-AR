@@ -1,3 +1,4 @@
+// 认证业务服务：协调用户 DAO、密码校验和会话签发，不直接处理 HTTP 响应细节。
 #pragma once
 
 #include <cstdint>

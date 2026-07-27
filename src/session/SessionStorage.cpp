@@ -1,3 +1,4 @@
+// 会话存储抽象的公共辅助实现。
 #include <session/SessionStorage.h>
 
 #include <chrono>

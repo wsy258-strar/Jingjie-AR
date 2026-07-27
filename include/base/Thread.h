@@ -1,3 +1,4 @@
+// 对 std::thread 的轻量封装：提供线程名称、创建计数和可在启动后读取的 Linux TID。
 #pragma once
 
 #include <functional>
@@ -17,7 +18,9 @@ public:
     explicit Thread(ThreadFunc, const std::string &name = std::string());
     ~Thread();
 
+    /// 创建工作线程，并同步等待新线程写入 tid_ 后才返回。
     void start();
+    /// 等待工作线程退出；调用方负责避免在同一线程中 join 自身。
     void join();
 
     bool started() { return started_; }

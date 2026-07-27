@@ -1,3 +1,4 @@
+// 异步日志双缓冲实现：生产者仅移动缓冲所有权，消费者线程批量写入并复用空闲缓冲。
 #include "AsyncLogging.h"
 #include <stdio.h>
 AsyncLogging::AsyncLogging(const std::string &basename, off_t rollSize, int flushInterval)

@@ -1,3 +1,4 @@
+// ARServer 应用装配根对象：注册路由与中间件，并持有业务服务依赖。
 #pragma once
 
 #include <http/HttpServer.h>

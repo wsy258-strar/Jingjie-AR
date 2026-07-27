@@ -1,3 +1,4 @@
+// 单个 TCP 连接：在所属 EventLoop 串行管理收发缓冲、状态转换和生命周期回调。
 #pragma once
 
 #include <memory>
@@ -43,6 +44,10 @@ struct SocketDeleter
 class TcpConnection : noncopyable, public std::enable_shared_from_this<TcpConnection>
 {
 public:
+    /**
+     * 连接对象由 TcpServer 以 shared_ptr 持有；所有 I/O 状态改变必须回到 getLoop()。
+     * 上层回调可跨线程调用 send()，但不得直接触碰 Channel 或缓冲区。
+     */
     TcpConnection(EventLoop *loop,
                   const std::string &nameArg,
                   int sockfd,

@@ -1,3 +1,4 @@
+// 标准 API 错误 JSON 构造实现。
 #include <utils/ApiError.h>
 
 #include <utils/JsonUtil.h>

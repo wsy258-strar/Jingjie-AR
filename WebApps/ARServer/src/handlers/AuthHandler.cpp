@@ -1,3 +1,4 @@
+// 注册/登录 HTTP 处理实现：参数校验在边界完成，密码与会话逻辑交由 AuthService。
 #include <handlers/AuthHandler.h>
 #include <services/AuthService.h>
 

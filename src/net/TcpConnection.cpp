@@ -1,3 +1,4 @@
+// TCP 连接读写状态机实现；跨线程 API 会转发到所属 EventLoop 后再修改 I/O 状态。
 #include <functional>
 #include <string>
 #include <errno.h>

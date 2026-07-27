@@ -1,3 +1,4 @@
+// 微秒精度的 Unix Epoch 时间值，同时作为定时器队列的排序键。
 #ifndef TIME_STAMP_H
 #define TIME_STAMP_H
 
@@ -20,7 +21,9 @@ public:
     }
 
     // 获取当前时间戳
+    /// 获取当前墙上时间；用于日志与定时任务到期计算。
     static Timestamp now();
+    /// 将时间格式化为本地时区的可读字符串。
     std::string toString()const;
     
     //格式, "%4d年%02d月%02d日 星期%d %02d:%02d:%02d.%06d",时分秒.微秒
@@ -64,6 +67,7 @@ inline bool operator==(Timestamp lhs, Timestamp rhs)
 // 如果是重复定时任务就会对此时间戳进行增加。
 inline Timestamp addTime(Timestamp timestamp, double seconds)
 {
+    // 将秒级浮点间隔一次性转换为微秒，避免调用方重复处理单位换算。
     // 将延时的秒数转换为微妙
     int64_t delta = static_cast<int64_t>(seconds * Timestamp::kMicroSecondsPerSecond);
     // 返回新增时后的时间戳

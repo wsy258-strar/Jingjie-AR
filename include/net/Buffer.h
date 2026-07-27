@@ -1,3 +1,4 @@
+// 可增长字节缓冲区：维护读写游标，为 TCP 收发和 HTTP 增量解析提供连续数据视图。
 #pragma once
 
 #include <vector>
@@ -9,6 +10,7 @@
 class Buffer
 {
 public:
+    // 预留前置空间可供协议层回填长度等元数据，正常负载从 readerIndex_ 开始。
     static const size_t kCheapPrepend = 8;//初始预留的prependabel空间大小
     static const size_t kInitialSize = 1024;
 
@@ -71,6 +73,7 @@ public:
     const char *beginWrite() const { return begin() + writerIndex_; }
 
     // 从fd上读取数据
+    /// 从非阻塞 fd 读取数据；发生错误时通过 saveErrno 返回 errno。
     ssize_t readFd(int fd, int *saveErrno);
     // 通过fd发送数据
     ssize_t writeFd(int fd, int *saveErrno);

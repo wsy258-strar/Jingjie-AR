@@ -1,3 +1,4 @@
+// 在线成员 HTTP 处理实现：结果由异步服务回调完成响应。
 #include <handlers/PresenceHandlers.h>
 
 #include <base/TaskWorkerPool.h>

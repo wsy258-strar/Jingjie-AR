@@ -1,3 +1,4 @@
+// 静态文件处理实现：防目录穿越、支持条件请求，并将大文件读取转交后台任务。
 #include <http/StaticFileHandler.h>
 #include <http/AsyncResponder.h>
 

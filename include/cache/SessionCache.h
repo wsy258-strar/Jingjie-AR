@@ -1,3 +1,4 @@
+// 会话缓存门面：将会话键映射到 Redis 值，并统一 TTL 与序列化约定。
 #pragma once
 
 #include <string>

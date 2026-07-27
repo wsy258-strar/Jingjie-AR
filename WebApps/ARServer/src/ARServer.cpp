@@ -1,3 +1,4 @@
+// ARServer 路由和依赖装配实现：将框架 HTTP 抽象连接到业务处理器。
 #include <ARServer.h>
 
 #include <handlers/AuthHandler.h>

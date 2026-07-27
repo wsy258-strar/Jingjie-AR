@@ -1,3 +1,4 @@
+// 文件写入工具：封装缓冲 FILE 流及字节计数，供日志滚动组件使用。
 #pragma once
 #include<string>
 #include<stdio.h>

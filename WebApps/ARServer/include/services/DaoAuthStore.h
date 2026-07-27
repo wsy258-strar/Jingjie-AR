@@ -1,3 +1,4 @@
+// 用户认证 DAO 适配器：将底层异步 User 查询封装为 AuthService 所需的存储契约。
 #pragma once
 
 #include <services/AuthService.h>

@@ -1,3 +1,4 @@
+// Logger 实现：构造时格式化前缀，析构时通过全局输出函数提交完整日志行。
 #include "Logger.h"
 #include "CurrentThread.h"
 

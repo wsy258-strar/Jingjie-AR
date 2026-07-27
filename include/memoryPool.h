@@ -1,3 +1,4 @@
+// 固定槽位内存池接口：适合大小不超过 MAX_SLOT_SIZE 的短生命周期对象。
 #pragma once 
 
 #include <cassert>
@@ -23,9 +24,14 @@ struct Slot
 class MemoryPool
 {
 public:
+    /**
+     * 创建一个内存池；BlockSize 表示一次向系统申请的原始内存块大小。
+     * 槽位大小由 init() 在该池投入使用前确定。
+     */
     MemoryPool(size_t BlockSize = 4096);
     ~MemoryPool();
     
+    /// 初始化槽位大小；同一池初始化后不得更改，否则既有槽位布局将失效。
     void init(size_t);
 
     void* allocate();
@@ -49,9 +55,11 @@ private:
 class HashBucket
 {
 public:
+    /// 初始化所有按 8 字节递增的槽位池；保留该接口以兼容旧调用方。
     static void initMemoryPool();
     static MemoryPool& getMemoryPool(int index);
 
+    /// 根据对象大小选择槽位池；超过上限的对象直接交给全局 operator new。
     static void* useMemory(size_t size)
     {
         if (size <= 0)
@@ -63,6 +71,7 @@ public:
         return getMemoryPool(((size + 7) / SLOT_BASE_SIZE) - 1).allocate();
     }
 
+    /// 按原始对象大小将内存归还给对应池，调用方必须传入与分配时一致的大小。
     static void freeMemory(void* ptr, size_t size)
     {
         if (!ptr)
@@ -86,6 +95,7 @@ public:
 template<typename T, typename... Args>
 T* newElement(Args&&... args)
 {
+    // 分配与构造分离：池只管理原始存储，placement new 负责建立对象生命周期。
     T* p = nullptr;
     // 根据元素大小选取合适的内存池分配内存
     if ((p = reinterpret_cast<T*>(HashBucket::useMemory(sizeof(T)))) != nullptr)
@@ -98,6 +108,7 @@ T* newElement(Args&&... args)
 template<typename T>
 void deleteElement(T* p)
 {
+    // 必须先结束对象生命周期，再把原始存储放回可复用空闲链表。
     // 对象析构
     if (p)
     {

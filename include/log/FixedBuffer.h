@@ -1,3 +1,4 @@
+// 固定容量字符缓冲：日志格式化路径避免动态分配，容量不足时由调用方决定截断策略。
 #pragma once
 #include <string.h>
 #include <string>

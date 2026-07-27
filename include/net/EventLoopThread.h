@@ -1,3 +1,4 @@
+// 在独立线程中创建并运行一个 EventLoop，并向调用线程安全发布该循环指针。
 #pragma once
 
 #include <functional>
@@ -13,6 +14,7 @@ class EventLoop;
 class EventLoopThread : noncopyable
 {
 public:
+    /// 启动线程并等待 EventLoop 初始化完成后返回；返回指针由该线程管理。
     using ThreadInitCallback = std::function<void(EventLoop *)>;
 
     EventLoopThread(const ThreadInitCallback &cb = ThreadInitCallback(),

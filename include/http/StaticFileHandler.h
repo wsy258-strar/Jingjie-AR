@@ -1,3 +1,4 @@
+// 静态文件处理器：校验请求路径、条件缓存头并选择内存响应或异步文件发送。
 #pragma once
 
 #include <http/HttpRequest.h>
@@ -13,6 +14,7 @@ class AsyncResponder;
 class StaticFileHandler
 {
 public:
+    /// FilePlan 只保存元数据与状态，避免在 I/O 线程同步读取大文件内容。
     struct FilePlan {
         FilePlan() : status(HttpResponse::k200Ok), lastModified(0), fileSize(0), isFile(false) {}
         HttpResponse::HttpStatusCode status;

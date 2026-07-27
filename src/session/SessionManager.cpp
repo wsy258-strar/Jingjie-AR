@@ -1,3 +1,4 @@
+// 会话管理协调实现：令牌创建、存储回调与过期清理由同一服务层统一编排。
 #include <session/SessionManager.h>
 
 #include <chrono>

@@ -1,3 +1,4 @@
+// MySQL 连接创建、健康检查与归还实现。
 #include "db/MySQLConnectionPool.h"
 #include "Logger.h"
 #include <cstring>

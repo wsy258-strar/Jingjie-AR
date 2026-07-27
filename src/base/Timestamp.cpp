@@ -1,3 +1,4 @@
+// Timestamp 的系统时间获取与本地化格式化实现。
 #include <Timestamp.h>
 
 // 获取当前时间戳
@@ -28,6 +29,7 @@ std::string Timestamp::toString()const
 // 20220826 16:29:10.773804
 std::string Timestamp::toFormattedString(bool showMicroseconds) const
 {
+    // 格式化时先拆分秒和余下微秒，避免将微秒总数直接交给日历时间函数。
     char buf[64] = {0};
     time_t seconds = static_cast<time_t>(microSecondsSinceEpoch_ / kMicroSecondsPerSecond);
     // 使用localtime函数将秒数格式化成日历时间

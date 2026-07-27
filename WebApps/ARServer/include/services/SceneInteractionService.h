@@ -1,3 +1,4 @@
+// 场景互动业务服务：协调 DAO 的异步点赞与评论持久化，并定义业务级失败语义。
 #pragma once
 
 #include <db/SceneInteractionDAO.h>

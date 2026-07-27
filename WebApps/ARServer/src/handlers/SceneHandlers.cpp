@@ -1,3 +1,4 @@
+// 场景目录和详情 HTTP 处理实现。
 #include <handlers/SceneHandlers.h>
 
 #include <catalog/SceneCatalog.h>

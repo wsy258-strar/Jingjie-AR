@@ -1,3 +1,4 @@
+// 请求分发实现：同步路径立即收尾，异步路径将 after 阶段延后至 responder 完成时。
 #include <http/HttpDispatcher.h>
 
 #include <exception>

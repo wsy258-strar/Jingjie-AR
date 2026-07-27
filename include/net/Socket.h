@@ -1,3 +1,4 @@
+// 独占 socket 文件描述符的 RAII 封装，并提供服务器端常用套接字选项。
 #pragma once
 
 #include "noncopyable.h"
@@ -8,6 +9,7 @@ class InetAddress;
 class Socket : noncopyable
 {
 public:
+    /// 析构时关闭 fd；因此一个 fd 只能由一个 Socket 实例拥有。
     explicit Socket(int sockfd)
         : sockfd_(sockfd)
     {

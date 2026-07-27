@@ -1,3 +1,4 @@
+// EventLoopThread 实现：用条件变量确保调用者获得已构造完成的 EventLoop。
 #include <EventLoopThread.h>
 #include <EventLoop.h>
 

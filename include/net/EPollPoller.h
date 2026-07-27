@@ -1,3 +1,4 @@
+// Linux epoll 的 Poller 实现，负责把内核就绪事件转换为活动 Channel 列表。
 #pragma once
 
 #include <vector>
@@ -18,6 +19,7 @@ class Channel;
 class EPollPoller : public Poller
 {
 public:
+    /// 仅由所属 EventLoop 线程调用的 epoll 封装。
     EPollPoller(EventLoop *loop);
     ~EPollPoller() override;
 

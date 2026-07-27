@@ -1,3 +1,4 @@
+// 两级缓存回源实现；Redis 可选依赖关闭时编译为受限功能集。
 #ifdef HAS_REDIS
 #include "cache/TwoLevelCache.h"
 #include "Logger.h"

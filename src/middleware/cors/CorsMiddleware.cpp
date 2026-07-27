@@ -1,3 +1,4 @@
+// CORS 白名单校验与预检响应实现。
 #include <middleware/cors/CorsMiddleware.h>
 
 #include <algorithm>

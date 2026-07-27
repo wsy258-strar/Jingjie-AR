@@ -1,3 +1,4 @@
+// 场景点赞、评论业务编排实现；底层 DAO 回调统一映射为服务层结果。
 #include <services/SceneInteractionService.h>
 
 #include <catalog/SceneCatalog.h>

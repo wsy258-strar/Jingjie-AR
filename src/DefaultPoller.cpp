@@ -1,3 +1,4 @@
+// 默认 Poller 工厂：Linux 平台选择 EPollPoller 作为 I/O 多路复用实现。
 #include <stdlib.h>
 
 #include <Poller.h>

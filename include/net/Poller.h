@@ -1,3 +1,4 @@
+// I/O 多路复用抽象；EventLoop 通过它管理 Channel，而具体平台实现负责等待就绪事件。
 #pragma once
 
 #include <vector>
@@ -13,6 +14,7 @@ class EventLoop;
 class Poller
 {
 public:
+    /// Poller 与一个 EventLoop 一一对应，调用者需遵守该循环的线程亲和性。
     using ChannelList = std::vector<Channel *>;
 
     Poller(EventLoop *loop);

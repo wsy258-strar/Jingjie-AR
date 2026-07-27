@@ -1,3 +1,4 @@
+// 监听连接的接收实现：accept 只在主 EventLoop 的读事件回调中执行。
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <errno.h>

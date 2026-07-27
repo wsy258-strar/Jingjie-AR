@@ -1,3 +1,4 @@
+// HTTP 增量解析状态机实现，严格限制请求行、头部和消息体的资源消耗。
 #include <http/HttpContext.h>
 #include <Logger.h>
 #include <string.h>

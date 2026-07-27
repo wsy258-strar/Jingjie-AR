@@ -1,3 +1,4 @@
+// TimerQueue 实现：timerfd 可读事件驱动到期任务执行，队列修改始终回到 I/O 线程。
 #include <EventLoop.h>
 #include <Channel.h>
 #include <Logger.h>
@@ -10,6 +11,7 @@
 
 int createTimerfd()
 {
+    // 单调时钟不受系统时间校准影响，适合计算相对超时。
     /**
      * CLOCK_MONOTONIC：绝对时间
      * TFD_NONBLOCK：非阻塞
@@ -36,6 +38,7 @@ TimerQueue::TimerQueue(EventLoop* loop)
 
 TimerQueue::~TimerQueue()
 {   
+    // 先从 Poller 移除 Channel，再关闭 fd，避免析构后仍接收可读事件。
     timerfdChannel_.disableAll();
     timerfdChannel_.remove();
     ::close(timerfd_);
@@ -123,6 +126,7 @@ std::vector<TimerQueue::Entry> TimerQueue::getExpired(Timestamp now)
 
 void TimerQueue::handleRead()
 {
+    // 先读 timerfd 清除就绪状态，再批量提取到期项，避免同一事件重复触发。
     Timestamp now = Timestamp::now();
     ReadTimerFd(timerfd_);
 
@@ -143,6 +147,7 @@ void TimerQueue::handleRead()
 
 void TimerQueue::reset(const std::vector<Entry>& expired, Timestamp now)
 {
+    // 到期对象在此处完成生命周期闭环：重复项重新入队，一次性项立即释放。
     Timestamp nextExpire;
     for (const Entry& it : expired)
     {

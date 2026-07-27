@@ -1,3 +1,4 @@
+// 已完成 HTTP 请求的值对象，保存解析结果、路由参数和仅限本次分发的中间件属性。
 #pragma once
 
 #include <string>
@@ -73,9 +74,11 @@ public:
 
     const std::map<std::string, std::string>& headers() const { return headers_; }
 
+    /// 路由匹配时写入命名路径参数；同名参数覆盖前一次值。
     void setPathParameter(const std::string& name, const std::string& value);
     std::string pathParameter(const std::string& name) const;
     std::string cookie(const std::string& name) const;
+    /// 中间件在请求范围内共享的字符串属性；不会跨 Keep-Alive 请求保留。
     void setAttribute(const std::string& name, const std::string& value);
     std::string attribute(const std::string& name) const;
 

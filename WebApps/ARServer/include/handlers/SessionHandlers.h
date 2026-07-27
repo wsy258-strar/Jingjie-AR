@@ -1,3 +1,4 @@
+// 会话端点处理器：实现进入场景、退出场景和心跳续期的 HTTP 协议适配。
 #pragma once
 
 #include <db/SessionDAO.h>

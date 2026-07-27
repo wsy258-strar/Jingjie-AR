@@ -1,3 +1,4 @@
+// 路由编译与匹配实现：动态模式在注册期编译为正则，避免请求期重复解析。
 #include <router/Router.h>
 
 #include <algorithm>

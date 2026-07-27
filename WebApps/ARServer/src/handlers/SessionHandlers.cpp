@@ -1,3 +1,4 @@
+// 会话 HTTP 处理实现：将异步 SessionService 回调转换为一次性 JSON 响应。
 #include <handlers/SessionHandlers.h>
 
 #include <utils/JsonUtil.h>

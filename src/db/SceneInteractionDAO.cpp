@@ -1,3 +1,4 @@
+// 场景互动 DAO 实现：所有 SQL 使用预处理语句和异步工作池，避免阻塞 I/O 线程。
 #include <db/SceneInteractionDAO.h>
 
 #include <db/DBWorkerPool.h>

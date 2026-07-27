@@ -1,3 +1,4 @@
+// HTTP 响应序列化实现：保证头部、Content-Length 与正文/文件发送元数据保持一致。
 #include <http/HttpResponse.h>
 #include <stdio.h>
 #include <cstring>

@@ -1,3 +1,4 @@
+// 日志文件底层写入实现：FILE 缓冲减少小块写系统调用。
 #include <cstring>
 #include "FileUtil.h"
 

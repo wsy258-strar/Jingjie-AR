@@ -1,3 +1,4 @@
+// 场景进入、退出和心跳业务流程实现；在线状态以持续心跳为准。
 #include <services/SessionService.h>
 
 namespace ar {

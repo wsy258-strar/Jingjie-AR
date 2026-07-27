@@ -1,11 +1,14 @@
+// 境界 AR 单页前端：负责场景浏览、认证、互动和基于 HTTP 心跳/轮询的轻量协作体验。
 (function () {
     'use strict';
+    // 页面级状态只在此闭包维护；Token 仅持久化于浏览器本地存储，不写入 URL。
     var currentToken = localStorage.getItem('jingjie.token') || '';
     var currentUser = localStorage.getItem('jingjie.user') || '';
     var currentScene = null;
     var heartbeatTimer = null;
     var membersTimer = null;
     var musicPlaying = false;
+    // 每次切换场景递增，用于丢弃上一个场景尚未返回的异步请求和纹理加载结果。
     var sceneEpoch = 0;
     var commentCursor = 0;
     var MIN_PANORAMA_FOV = 35, MAX_PANORAMA_FOV = 100, DEFAULT_PANORAMA_FOV = 80;
@@ -13,6 +16,7 @@
     var panoramaZoomCleanup = null;
     var $ = function (id) { return document.getElementById(id); };
 
+    // 统一解析 JSON 错误体，并将非 2xx 响应转换为携带 HTTP 状态的异常。
     function request(url, options) {
         options = options || {};
         options.headers = options.headers || {};
@@ -42,6 +46,7 @@
         $('scene-total').textContent = scenes.length + ' 个场景';
     }
     function loadScenes() { request('/api/scenes').then(function (data) { renderScenes(data.scenes || []); }).catch(function () { $('scene-grid').textContent = '场景加载失败，请检查服务。'; }); }
+    // 进入成功后才启动在线状态任务，epoch 避免过期请求激活错误场景的轮询。
     function enterSession(scene, epoch) {
         if (!currentToken) return;
         request('/api/session/enter?token=' + encodeURIComponent(currentToken) + '&scene=' + encodeURIComponent(scene.id), { method: 'POST' })
@@ -55,6 +60,7 @@
         if (!currentScene) return;
         request('/api/scenes/' + encodeURIComponent(currentScene.id) + '/members').then(function (data) { $('online-count').textContent = (data.members || []).length; }).catch(function () { $('online-count').textContent = '—'; });
     }
+    // 同一时刻只保留一组心跳和成员轮询定时器，切场景或关闭查看器时必须清理。
     function startPresence() { stopHeartbeat(); heartbeat(); updateMembers(); heartbeatTimer = window.setInterval(heartbeat, 10000); membersTimer = window.setInterval(updateMembers, 10000); }
     function stopHeartbeat() { if (heartbeatTimer) window.clearInterval(heartbeatTimer); if (membersTimer) window.clearInterval(membersTimer); heartbeatTimer = null; membersTimer = null; }
     function clearPanoramaZoom() { if (panoramaZoomCleanup) panoramaZoomCleanup(); panoramaZoomCleanup = null; }
@@ -62,6 +68,7 @@
         if (typeof epoch !== 'undefined' && sceneEpoch !== epoch) return;
         $('panorama-loading').classList.toggle('hidden', !visible);
     }
+    // 鼠标滚轮与双指手势都只调整相机 FOV；清理函数防止旧 A-Frame 场景残留事件监听器。
     function bindPanoramaZoom(aframeScene) {
         clearPanoramaZoom();
         var host = $('aframe-host'), lastDistance = 0, camera = aframeScene.camera;
@@ -84,6 +91,7 @@
         image.src = sourceUrl;
         return image;
     }
+    // 先检查场景代次和 DOM 所有权，再替换预览纹理，避免延迟下载覆盖用户已切换的新场景。
     function applyHighResolutionTexture(scene, previewSky, epoch, texture) {
         if (sceneEpoch !== epoch || currentScene !== scene || !previewSky.parentNode) { texture.dispose(); return; }
         var mesh = previewSky.getObject3D('mesh');
@@ -106,6 +114,7 @@
             window.setTimeout(function () { applyHighResolutionTexture(scene, previewSky, epoch, texture); }, remainingDelay);
         }, undefined, function () { setPanoramaLoading(false, epoch); });
     }
+    // 先显示低分辨率预览，预览材质就绪后后台加载高清纹理，降低首屏等待感。
     function beginPanoramaPreview(scene, assets, sky, epoch, previewUrl, previewAssetId) {
         var previewImage = createPanoramaAssetImage(previewAssetId, previewUrl);
         assets.appendChild(previewImage);
@@ -140,9 +149,11 @@
     function prepareMusic(url) { var audio = $('scene-audio'); audio.src = url; audio.play().then(function () { musicPlaying = true; $('music-button').textContent = '暂停音乐'; }).catch(function () { musicPlaying = false; $('music-button').textContent = '播放音乐'; }); }
     function stopMusic() { var audio = $('scene-audio'); audio.pause(); audio.removeAttribute('src'); audio.load(); musicPlaying = false; }
 
+    // 场景切换是一个事务：失效旧异步操作、重置 UI、创建新全景并重新建立在线会话。
     window.openScene = function (scene) {
         var epoch = ++sceneEpoch; scene.liked = false; currentScene = scene; commentCursor = 0; $('viewer-name').textContent = scene.name; $('viewer-kicker').textContent = '360° PANORAMA'; $('online-count').textContent = '0'; $('like-count').textContent = '0'; $('music-button').disabled = true; $('music-button').textContent = '音乐未配置'; $('viewer').classList.remove('hidden'); createAFrameScene(scene, epoch); updateDetail(scene, epoch); window.history.pushState({ scene: scene.id }, '', '#scene=' + encodeURIComponent(scene.id)); enterSession(scene, epoch);
     };
+    // 关闭时先停止本地副作用，再尽力通知服务端退出；网络失败不阻塞界面恢复。
     window.closeScene = function () {
         var scene = currentScene; ++sceneEpoch; setPanoramaLoading(false); stopHeartbeat(); stopMusic(); $('comments-drawer').classList.add('hidden'); destroyAFrameScene(); $('viewer').classList.add('hidden'); currentScene = null;
         if (currentToken && scene) request('/api/session/exit?token=' + encodeURIComponent(currentToken), { method: 'POST' }).catch(function () {});
@@ -156,6 +167,7 @@
     window.openComments = function () {
         if (!currentScene || !requireLogin()) return; $('comments-drawer').classList.remove('hidden'); commentCursor = 0; $('comment-list').textContent = ''; loadComments(false);
     };
+    // 评论采用 before 游标向历史分页；捕获当前场景引用以忽略切换后的迟到响应。
     function loadComments(append) {
         if (!currentScene) return;
         var scene = currentScene; var cursor = commentCursor;
@@ -173,6 +185,7 @@
     };
     window.toggleMusic = function () { var audio = $('scene-audio'); if (!currentScene || !currentScene.music_url) { showToast('音乐未配置'); return; } if (musicPlaying) { audio.pause(); musicPlaying = false; $('music-button').textContent = '播放音乐'; } else { audio.play().then(function () { musicPlaying = true; $('music-button').textContent = '暂停音乐'; }).catch(function () { showToast('浏览器需要手动允许播放音乐'); }); } };
     window.toggleFullscreen = function () { var element = $('viewer'); if (!document.fullscreenElement && element.requestFullscreen) element.requestFullscreen(); else if (document.exitFullscreen) document.exitFullscreen(); };
+    // 登录成功后同步内存和本地存储；若用户正浏览场景，立即补发进入会话请求。
     function login() { var username = $('auth-username').value.trim(), password = $('auth-password').value; $('auth-message').textContent = ''; if (!username || !password) { $('auth-message').textContent = '请输入用户名和密码'; return; } request('/api/auth', { method: 'POST', headers: { 'Content-Type':'application/json' }, body: JSON.stringify({ username:username, password:password }) }).then(function (data) { currentToken=data.session_token; currentUser=data.username; localStorage.setItem('jingjie.token',currentToken); localStorage.setItem('jingjie.user',currentUser); setAuthButton(); closeAuthModal(); showToast(data.is_new ? '注册并登录成功' : '登录成功'); if (currentScene) enterSession(currentScene, sceneEpoch); }).catch(function (error) { $('auth-message').textContent=error.message || '认证失败'; }); }
     $('scene-audio').addEventListener('ended', function () { musicPlaying = false; if (currentScene && currentScene.music_url) $('music-button').textContent = '播放音乐'; }); $('auth-open').addEventListener('click', openAuthModal); $('auth-close').addEventListener('click', closeAuthModal); $('auth-submit').addEventListener('click', login); $('auth-password').addEventListener('keydown', function (event) { if (event.key === 'Enter') login(); }); $('exit-button').addEventListener('click', window.closeScene); $('fullscreen-button').addEventListener('click', window.toggleFullscreen); $('music-button').addEventListener('click', window.toggleMusic); $('like-button').addEventListener('click', window.toggleLike); $('comments-button').addEventListener('click', window.openComments); $('comments-close').addEventListener('click', function () { $('comments-drawer').classList.add('hidden'); }); $('comments-more').addEventListener('click', function () { loadComments(true); }); $('comment-submit').addEventListener('click', window.submitComment); $('comment-input').addEventListener('keydown', function (event) { if (event.key === 'Enter') window.submitComment(); }); window.addEventListener('popstate', function () { if (currentScene) window.closeScene(); });
     setAuthButton(); loadScenes();

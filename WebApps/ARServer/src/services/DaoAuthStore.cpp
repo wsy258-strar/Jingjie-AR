@@ -1,3 +1,4 @@
+// 认证存储 DAO 适配实现。
 #include <services/DaoAuthStore.h>
 
 namespace ar {

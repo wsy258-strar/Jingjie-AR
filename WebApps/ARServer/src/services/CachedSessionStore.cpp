@@ -1,3 +1,4 @@
+// 缓存优先会话存储实现：缓存层错误不被误报为“会话不存在”。
 #include <services/CachedSessionStore.h>
 
 #include <base/TaskWorkerPool.h>

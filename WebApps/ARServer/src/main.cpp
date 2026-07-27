@@ -1,3 +1,4 @@
+// ARServer 进程入口：加载环境配置、构造 EventLoop 与应用，并启动 HTTP 监听。
 #include <ARServer.h>
 #include <handlers/AuthHandler.h>
 #include <services/AuthService.h>

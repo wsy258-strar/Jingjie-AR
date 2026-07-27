@@ -1,3 +1,4 @@
+// 热点静态文件内容缓存，结合 LFU 分片降低重复磁盘读取与并发锁竞争。
 #pragma once
 
 #include <string>

@@ -1,3 +1,4 @@
+// 一次性异步 HTTP 响应句柄：允许后台任务在请求回调返回后安全地完成响应。
 #pragma once
 
 #include <http/HttpResponse.h>
@@ -9,6 +10,7 @@
 class AsyncResponder
 {
 public:
+    /// send 仅首次成功；共享状态防止多个完成路径重复写同一连接。
     typedef std::function<void(HttpResponse)> Sender;
 
     AsyncResponder();

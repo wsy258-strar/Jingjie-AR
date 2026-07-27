@@ -1,3 +1,4 @@
+// 会话 DAO 适配器：把 SessionDAO 的回调接口映射为应用层会话持久化操作。
 #pragma once
 
 #include <services/SessionService.h>

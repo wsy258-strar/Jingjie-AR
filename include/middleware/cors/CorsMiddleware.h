@@ -1,3 +1,4 @@
+// CORS 中间件：校验跨域请求并为普通请求或预检请求写入响应头。
 #pragma once
 
 #include <middleware/Middleware.h>
@@ -6,6 +7,7 @@
 class CorsMiddleware : public Middleware
 {
 public:
+    /// 配置在构造时复制，之后只读，便于多个 I/O 线程共享同一中间件实例。
     explicit CorsMiddleware(const CorsConfig& config);
 
     bool before(HttpRequest& request, HttpResponse& response) override;

@@ -1,3 +1,4 @@
+// 有界后台任务池实现：析构时停止接收新任务，并让工作线程排空已提交任务后退出。
 #include <base/TaskWorkerPool.h>
 
 TaskWorkerPool::TaskWorkerPool(size_t workers, size_t capacity)
@@ -12,6 +13,7 @@ TaskWorkerPool::TaskWorkerPool(size_t workers, size_t capacity)
 
 TaskWorkerPool::~TaskWorkerPool()
 {
+    // accepting_ 变为 false 后，wait 谓词仍允许已排队任务被依次取走。
     {
         std::lock_guard<std::mutex> lock(mutex_);
         accepting_ = false;
@@ -28,6 +30,7 @@ TaskWorkerPool::~TaskWorkerPool()
 
 bool TaskWorkerPool::submit(const Task& task)
 {
+    // 容量检查与入队在同一锁内完成，避免并发提交突破队列上限。
     std::lock_guard<std::mutex> lock(mutex_);
     if (!accepting_ || workers_.empty() || tasks_.size() >= capacity_)
     {
@@ -46,6 +49,7 @@ size_t TaskWorkerPool::pendingCount() const
 
 void TaskWorkerPool::run()
 {
+    // 任务在锁外执行，防止一个慢任务阻塞其他提交者或工作线程取任务。
     while (true)
     {
         Task task;

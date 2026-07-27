@@ -1,3 +1,4 @@
+// 协作会话服务：管理进入、退出和心跳状态，并维护客户端可见的在线成员语义。
 #pragma once
 
 #include <db/SessionDAO.h>

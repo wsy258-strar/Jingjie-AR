@@ -1,3 +1,4 @@
+// 会话持久化抽象：实现可替换，但所有实现都以异步回调表达读取、写入和删除结果。
 #pragma once
 
 #include <session/Session.h>

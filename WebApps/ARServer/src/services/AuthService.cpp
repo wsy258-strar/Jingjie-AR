@@ -1,3 +1,4 @@
+// 认证服务实现：密码哈希校验完成后再创建会话，避免凭据逻辑散落在处理器中。
 #include <services/AuthService.h>
 
 #include <utils/JsonUtil.h>

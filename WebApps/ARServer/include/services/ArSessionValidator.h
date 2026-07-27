@@ -1,3 +1,4 @@
+// AR 会话验证器：集中定义 Token 校验、用户身份提取与无效会话的失败语义。
 #pragma once
 
 #include <session/SessionManager.h>

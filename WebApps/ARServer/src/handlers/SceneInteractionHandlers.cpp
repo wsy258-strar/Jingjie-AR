@@ -1,3 +1,4 @@
+// 点赞与评论 HTTP 处理实现：身份、输入和游标校验在进入业务服务前完成。
 #include <handlers/SceneInteractionHandlers.h>
 
 #include <catalog/SceneCatalog.h>

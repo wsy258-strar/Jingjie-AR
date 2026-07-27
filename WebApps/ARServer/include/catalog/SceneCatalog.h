@@ -1,3 +1,4 @@
+// 内置场景目录：提供只读的全景资源元数据，不承担用户互动或在线状态。
 #pragma once
 
 #include <string>

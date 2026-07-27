@@ -1,3 +1,4 @@
+// Redis 会话文本编解码实现；格式仅供内部存储使用，调用方通过 SessionStorage 抽象访问。
 #include <session/RedisSessionStorage.h>
 
 #include <cstdint>

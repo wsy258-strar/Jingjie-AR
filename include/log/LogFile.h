@@ -1,3 +1,4 @@
+// 滚动日志文件管理：按时间或累计大小切换文件，并向异步日志后台提供 append/flush。
 #pragma once
 #include "FileUtil.h"
 #include <mutex>

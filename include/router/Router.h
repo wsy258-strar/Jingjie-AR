@@ -1,3 +1,4 @@
+// 路由表：区分精确与参数化路径，并在匹配时注入路径参数和方法允许集合。
 #pragma once
 
 #include <http/HttpRequest.h>
@@ -30,6 +31,7 @@ enum MatchResult
 class Router
 {
 public:
+    /// 注册阶段拒绝重复的“HTTP 方法 + 模式”；运行阶段只读路由表。
     bool add(HttpRequest::Method method, const std::string& pattern,
              const HandlerCallback& handler);
     bool addAsync(HttpRequest::Method method, const std::string& pattern,

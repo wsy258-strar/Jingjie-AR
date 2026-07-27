@@ -1,3 +1,4 @@
+// 用户与会话数据访问对象：通过 DBWorkerPool 异步执行参数化 MySQL 查询和写入。
 #pragma once
 
 #include <string>

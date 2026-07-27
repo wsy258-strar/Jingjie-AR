@@ -1,3 +1,4 @@
+// 固定场景目录实现：资源路径由部署静态根目录解释，目录本身不访问数据库。
 #include <catalog/SceneCatalog.h>
 
 namespace ar {

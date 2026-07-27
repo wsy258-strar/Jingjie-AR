@@ -1,3 +1,4 @@
+// MySQL 连接池：负责连接创建、借用、归还与池关闭期间的资源回收。
 #pragma once
 
 #include <mysql/mysql.h>

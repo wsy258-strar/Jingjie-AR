@@ -1,3 +1,4 @@
+// AsyncResponder 共享一次性完成状态的实现。
 #include <http/AsyncResponder.h>
 
 struct AsyncResponder::State

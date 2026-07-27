@@ -1,3 +1,4 @@
+// 多 Reactor 服务器装配实现：主循环接受连接并把连接生命周期交给对应子循环。
 #include <functional>
 #include <string.h>
 

@@ -1,3 +1,4 @@
+// 监听套接字适配器：在主 EventLoop 接收连接，并把连接描述符交给 TcpServer。
 #pragma once
 
 #include <functional>
@@ -13,6 +14,7 @@ class InetAddress;
 class Acceptor : noncopyable
 {
 public:
+    /// 构造后由 listen() 在所属 EventLoop 线程注册监听事件。
     using NewConnectionCallback = std::function<void(int sockfd, const InetAddress &)>;
 
     Acceptor(EventLoop *loop, const InetAddress &listenAddr, bool reuseport);
@@ -22,6 +24,7 @@ public:
     // 判断是否在监听
     bool listenning() const { return listenning_; }
     // 监听本地端口
+    /// 开始监听；不得在已监听状态重复调用。
     void listen();
 
 private:

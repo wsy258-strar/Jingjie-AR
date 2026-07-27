@@ -1,3 +1,4 @@
+// 场景互动端点处理器：处理点赞、取消点赞和评论查询/发布的请求边界校验。
 #pragma once
 
 #include <http/AsyncResponder.h>

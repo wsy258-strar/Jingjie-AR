@@ -1,3 +1,4 @@
+// EventLoop 实现：eventfd 将跨线程投递转换为可读 I/O 事件，唤醒阻塞的 epoll_wait。
 #include <sys/eventfd.h>
 #include <unistd.h>
 #include <fcntl.h>

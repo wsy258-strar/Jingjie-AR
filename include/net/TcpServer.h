@@ -1,3 +1,4 @@
+// 多 Reactor TCP 服务器：主循环接受连接，子循环负责各连接的 I/O 处理。
 #pragma once
 
 /**
@@ -23,6 +24,7 @@
 class TcpServer
 {
 public:
+    /// 服务实例归属主 EventLoop；连接表仅在主循环线程维护。
     using ThreadInitCallback = std::function<void(EventLoop *)>;
 
     enum Option

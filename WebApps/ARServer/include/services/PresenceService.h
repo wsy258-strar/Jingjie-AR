@@ -1,3 +1,4 @@
+// 在线状态服务：以 Redis 心跳 TTL 为准维护成员在线性，不将匿名浏览计入协作人数。
 #pragma once
 
 #include <cstdint>

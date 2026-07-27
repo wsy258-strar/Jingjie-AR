@@ -1,3 +1,4 @@
+// HTTP 连接驱动实现：在每连接 HttpContext 上增量解析、分发并处理 Keep-Alive 边界。
 #include <http/HttpServer.h>
 #include <http/HttpContext.h>
 #include <Logger.h>

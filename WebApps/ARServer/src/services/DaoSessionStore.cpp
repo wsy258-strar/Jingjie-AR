@@ -1,3 +1,4 @@
+// 会话持久化 DAO 适配实现。
 #include <services/DaoSessionStore.h>
 
 namespace ar {

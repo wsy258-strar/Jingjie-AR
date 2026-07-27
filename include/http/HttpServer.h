@@ -1,3 +1,4 @@
+// HTTP 服务器外观：把 TcpServer 的字节流事件转换为请求分发与响应发送流程。
 #pragma once
 
 #include <functional>
@@ -72,6 +73,7 @@ public:
     /// 访问底层TcpServer(高级用法)
     TcpServer& tcpServer() { return server_; }
 
+    /// 判断 Keep-Alive 连接能否继续解析下一请求；异步响应或关闭语义会暂停当前循环。
     static bool shouldContinueParsing(HttpDispatcher::Result result,
                                       bool closeConnection);
 

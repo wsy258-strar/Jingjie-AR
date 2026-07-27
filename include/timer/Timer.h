@@ -1,3 +1,4 @@
+// 单个定时任务的状态对象；TimerQueue 负责其创建、调度和最终释放。
 #ifndef TIMER_H
 #define TIMER_H
 
@@ -22,6 +23,7 @@ public:
     {
     }
 
+    /// 在所属 EventLoop 线程执行回调；回调本身不应阻塞事件循环。
     void run() const 
     { 
         callback_(); 
@@ -31,6 +33,7 @@ public:
     bool repeat() const { return repeat_; }
 
     // 重启定时器(如果是非重复事件则到期时间置为0)
+    /// 重复任务按 interval_ 推进到下一次到期；一次性任务重置为无效时间戳。
     void restart(Timestamp now);
 
 private:

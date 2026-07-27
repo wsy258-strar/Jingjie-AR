@@ -1,3 +1,4 @@
+// 认证端点处理器：接收注册/登录凭据并委托 AuthService 异步返回会话令牌。
 #pragma once
 
 #include <http/HttpRequest.h>

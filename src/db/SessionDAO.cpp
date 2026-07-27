@@ -1,3 +1,4 @@
+// 用户与协作会话 DAO 实现：回调只在数据库工作任务结束后执行。
 #include "db/SessionDAO.h"
 #include "db/DBWorkerPool.h"
 #include "db/MySQLConnectionPool.h"

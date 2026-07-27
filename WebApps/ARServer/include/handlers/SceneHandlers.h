@@ -1,3 +1,4 @@
+// 场景查询端点处理器：提供场景目录与单个场景详情的 HTTP 适配。
 #pragma once
 
 #include <http/HttpRequest.h>

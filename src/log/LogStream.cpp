@@ -1,3 +1,4 @@
+// 日志流基础类型格式化实现。
 #include "LogStream.h"
 #include <algorithm>
 

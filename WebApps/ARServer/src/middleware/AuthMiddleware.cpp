@@ -1,3 +1,4 @@
+// HTTP 认证中间件实现：验证成功后仅向当前请求注入身份上下文。
 #include <middleware/AuthMiddleware.h>
 
 #include <session/SessionManager.h>

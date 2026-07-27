@@ -1,3 +1,4 @@
+// I/O 事件循环线程池：主循环以轮询策略把新连接分配给子循环。
 #pragma once
 
 #include <functional>
@@ -12,6 +13,7 @@ class EventLoopThread;
 class EventLoopThreadPool : noncopyable
 {
 public:
+    /// start() 只能调用一次；零工作线程时连接继续由 baseLoop_ 处理。
     using ThreadInitCallback = std::function<void(EventLoop *)>;
 
     EventLoopThreadPool(EventLoop *baseLoop, const std::string &nameArg);

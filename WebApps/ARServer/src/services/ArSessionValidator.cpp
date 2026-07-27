@@ -1,3 +1,4 @@
+// AR 会话令牌解析与验证实现。
 #include <services/ArSessionValidator.h>
 
 #include <services/SessionService.h>

@@ -1,3 +1,4 @@
+// 环境变量配置解析实现：启动期尽早验证必填项，避免运行时带着无效连接参数继续服务。
 #include <config/AppConfig.h>
 
 #include <cstdlib>

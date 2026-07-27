@@ -1,3 +1,4 @@
+// Redis 在线状态实现：心跳覆盖 TTL，成员列表读取反映当前有效心跳集合。
 #include <services/PresenceService.h>
 
 #include <cache/RedisConnectionPool.h>

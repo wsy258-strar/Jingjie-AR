@@ -1,3 +1,4 @@
+// Buffer 的 scatter/gather I/O 实现：利用额外栈缓冲降低常见读路径的扩容次数。
 #include <errno.h>
 #include <sys/uio.h>
 #include <unistd.h>

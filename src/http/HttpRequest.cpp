@@ -1,3 +1,4 @@
+// HTTP 请求辅助实现：路径参数、Cookie、属性和查询字符串的懒解析均限定在单次请求。
 #include <http/HttpRequest.h>
 #include <sstream>
 #include <iomanip>

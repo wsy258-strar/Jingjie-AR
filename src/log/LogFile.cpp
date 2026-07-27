@@ -1,3 +1,4 @@
+// 滚动日志文件实现：按周期和大小检查切换，避免单个日志文件无限增长。
 #include "LogFile.h"
 LogFile::LogFile(const std::string &basename,
                  off_t rollsize,
@@ -88,4 +89,3 @@ void LogFile::appendInlock(const char *data, int len)
         file_->flush();
     }
 }
-

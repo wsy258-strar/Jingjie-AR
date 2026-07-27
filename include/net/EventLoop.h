@@ -1,3 +1,4 @@
+// one-loop-per-thread 事件循环：串行处理 I/O 事件、定时器和跨线程投递的回调。
 #pragma once
 
 #include <functional>
@@ -17,6 +18,7 @@ class Poller;
 class EventLoop : noncopyable //不可拷贝
 {
 public:
+    /// EventLoop 必须在其创建线程运行 loop()；内部状态只在该线程修改。
     using Functor = std::function<void()>;
 
     EventLoop();
@@ -30,8 +32,10 @@ public:
     Timestamp pollReturnTime() const { return pollRetureTime_; }
 
     // 在当前loop中执行
+    /// 当前线程直接执行，否则转入 pendingFunctors_ 并唤醒所属事件循环。
     void runInLoop(Functor cb);
     // 把上层注册的回调函数cb放入队列中 唤醒loop所在的线程执行cb
+    /// 线程安全地投递回调；实际执行顺序由 EventLoop 的单线程串行化保证。
     void queueInLoop(Functor cb);
 
     // 通过eventfd唤醒loop所在的线程

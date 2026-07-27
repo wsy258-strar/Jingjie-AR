@@ -1,3 +1,4 @@
+// 会话值对象与令牌/过期时间辅助逻辑实现。
 #include <session/Session.h>
 
 namespace http {

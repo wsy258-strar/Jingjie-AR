@@ -1,3 +1,4 @@
+// Channel 事件分发实现：tie_ 在回调期间守护上层连接对象的生命周期。
 #include <sys/epoll.h>
 
 #include <Channel.h>

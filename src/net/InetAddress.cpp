@@ -1,3 +1,4 @@
+// IPv4 地址的构造与文本格式化实现。
 #include <strings.h>
 #include <string.h>
 

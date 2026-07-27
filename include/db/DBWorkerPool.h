@@ -1,3 +1,4 @@
+// 数据库工作池：将 MySQL 操作从 EventLoop 移至专用线程，并以有界队列实施背压。
 #pragma once
 
 #include <functional>

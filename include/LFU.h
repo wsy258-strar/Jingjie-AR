@@ -1,3 +1,4 @@
+// 带访问频次老化机制的 LFU 缓存：避免热点计数无限增长并减轻长期缓存污染。
 #pragma once
 
 #include <cmath>
@@ -41,6 +42,7 @@ private:
     NodePtr tail_; // 假尾结点（右哨兵节点），本身不存储实际的缓存数据
 
 public:
+    /// 每个频次对应一个双向链表；同频节点按最近插入顺序排列。
     explicit FreqList(int n) 
      : freq_(n) 
     {
@@ -90,6 +92,10 @@ template <typename Key, typename Value>
 class KLfuCache : public KICachePolicy<Key, Value>
 {
 public:
+    /**
+     * 单分片 LFU 缓存。所有公开读写都持有 mutex_，因此频次更新与淘汰对调用者原子可见。
+     * maxAverageNum 用于触发频次老化，而非限制单个键的访问次数。
+     */
     using Node = typename FreqList<Key, Value>::Node;
     using NodePtr = std::shared_ptr<Node>;
     using NodeMap = std::unordered_map<Key, NodePtr>;
@@ -176,6 +182,7 @@ private:
 template<typename Key, typename Value>
 void KLfuCache<Key, Value>::getInternal(NodePtr node, Value& value) //node 是指向已找到的目标缓存节点的智能指针
 {
+    // 调用方已持有 mutex_；该内部函数不再加锁以避免同一线程重复锁定。
     // 找到之后需要将其从低访问频次的链表中删除，并且添加到+1的访问频次链表中，
     // 访问频次+1, 然后把value值返回
     value = node->value;
@@ -213,6 +220,7 @@ void KLfuCache<Key, Value>::putInternal(Key key, Value value)
 template<typename Key, typename Value>
 void KLfuCache<Key, Value>::kickOut()
 {
+    // minFreq_ 指向当前最低频次链表，其首节点是本轮淘汰对象。
     NodePtr node = freqToFreqList_[minFreq_]->getFirstNode();
     removeFromFreqList(node);
     nodeMap_.erase(node->key);
@@ -277,6 +285,7 @@ void KLfuCache<Key, Value>::decreaseFreqNum(int num)
 template<typename Key, typename Value>
 void KLfuCache<Key, Value>::handleOverMaxAverageNum()
 {
+    // 老化前先从旧频次链表摘除，避免节点频次与所属链表键不一致。
     if (nodeMap_.empty())
         return;
 

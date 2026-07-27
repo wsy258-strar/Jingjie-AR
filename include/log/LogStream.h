@@ -1,3 +1,4 @@
+// 日志流格式化器：将基础类型追加到 FixedBuffer，避免依赖 iostream 的格式化开销。
 #pragma once
 #include <string.h>
 #include <string>

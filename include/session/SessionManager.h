@@ -1,3 +1,4 @@
+// 会话管理器：协调内存/Redis 存储、令牌生成与回收，对上层提供统一异步接口。
 #pragma once
 
 #include <http/HttpRequest.h>

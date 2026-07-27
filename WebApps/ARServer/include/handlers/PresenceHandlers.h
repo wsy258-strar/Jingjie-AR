@@ -1,3 +1,4 @@
+// 在线成员端点处理器：将场景成员读取请求交给 PresenceService 并输出 JSON。
 #pragma once
 
 #include <http/AsyncResponder.h>
