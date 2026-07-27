@@ -2,7 +2,11 @@
 
 > 自研 C++11 HTTP 服务框架 + A-Frame 360° 全景协作浏览应用。
 
+![alt text](img/image.png)
+
 `Jingjie-AR` 是一个用于展示 C++ 后端与工程化能力的作品集项目：底层是可被外部程序链接的 `http_framework`，上层是基于该框架构建的 ARServer。ARServer 提供八个 360° 全景场景，游客可浏览，登录用户可进入场景、查看在线成员、点赞和评论。
+
+
 
 ## 项目亮点
 
