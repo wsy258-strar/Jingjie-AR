@@ -31,11 +31,7 @@ public:
         running_ = true;
         thread_.start();
     }
-    void stop()
-    {
-        running_ = false;
-        cond_.notify_one();
-    }
+    void stop();
 
 private:
     using LargeBuffer = FixedBuffer<kLargeBufferSize>;

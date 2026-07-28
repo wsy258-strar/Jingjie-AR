@@ -18,6 +18,13 @@ AsyncLogging::AsyncLogging(const std::string &basename, off_t rollSize, int flus
     nextBuffer_->bzero();
     buffers_.reserve(16); // 只维持队列长度2~16.
 }
+
+void AsyncLogging::stop()
+{
+    if (!running_.exchange(false)) return;
+    cond_.notify_one();
+    thread_.join();
+}
 //前端
 // 调用此函数解决前端把LOG_XXX<<"..."传递给后端，后端再将日志消息写入日志文件
 void AsyncLogging::append(const char *logline, int len)
@@ -50,7 +57,7 @@ void AsyncLogging::append(const char *logline, int len)
 void AsyncLogging::threadFunc()
 {
     // output写入磁盘接口
-    LogFile output(basename_, rollSize_);
+    LogFile output(basename_, rollSize_, flushInterval_);
     BufferPtr newbuffer1(new LargeBuffer); // 生成newbuffer1替换currentbuffer_（前端）
     BufferPtr newbuffer2(new LargeBuffer); // 生成newbuffer2替换nextBuffer_（前端），其目的是为了防止后端缓冲区全满前端无法写入
     newbuffer1->bzero();
@@ -58,14 +65,14 @@ void AsyncLogging::threadFunc()
     // 缓冲区数组置为16个，用于和前端缓冲区数组进行交换
     BufferVector buffersToWrite;
     buffersToWrite.reserve(16);
-    while (running_)
+    while (true)
     {
         {
             // 互斥锁保护这样就保证了其他前端线程无法向前端buffer写入数据
             std::unique_lock<std::mutex> lg(mutex_);
-            if (buffers_.empty())
+            if (buffers_.empty() && running_)
             {
-                cond_.wait_for(lg, std::chrono::seconds(3)); //要么被前端 notify_one() 唤醒（日志满了），要么 3 秒超时唤醒（少量日志）
+                cond_.wait_for(lg, std::chrono::seconds(flushInterval_)); //要么被前端 notify_one() 唤醒（日志满了），要么刷新超时唤醒（少量日志）
             }
             buffers_.push_back(std::move(currentBuffer_));
             currentBuffer_ = std::move(newbuffer1); // 生成newbuffer1替换currentbuffer_
@@ -101,6 +108,7 @@ void AsyncLogging::threadFunc()
         }
         buffersToWrite.clear(); // 清空后端缓冲队列
         output.flush();         // 清空文件夹缓冲区
+        if (!running_) break;
     }
     output.flush(); // 确保一定清空。
 }
