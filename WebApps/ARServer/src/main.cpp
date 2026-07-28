@@ -15,6 +15,9 @@
 
 #include <base/TaskWorkerPool.h>
 #include <http/StaticFileHandler.h>
+#include <log/AsyncLogging.h>
+#include <log/LogDirectory.h>
+#include <log/Logger.h>
 #include <net/EventLoop.h>
 #include <net/InetAddress.h>
 
@@ -29,6 +32,7 @@
 #endif
 
 #include <cstdlib>
+#include <functional>
 #include <iostream>
 #include <memory>
 
@@ -47,6 +51,22 @@ int main()
         for (size_t index = 0; index < configurationErrors.size(); ++index)
             std::cerr << "configuration error: " << configurationErrors[index] << std::endl;
         return 2;
+    }
+    std::unique_ptr<AsyncLogging> logging;
+    if (config.logEnabled)
+    {
+        std::string loggingError;
+        if (!ensureLogDirectory("logs", &loggingError) ||
+            !removeExpiredLogFiles("logs", config.logRetentionDays, &loggingError))
+        {
+            std::cerr << "logging initialization error: " << loggingError << std::endl;
+            return 2;
+        }
+        logging.reset(new AsyncLogging("logs/ar_server", config.logRollSizeBytes,
+                                       config.logFlushIntervalSeconds));
+        Logger::setOutput(std::bind(&AsyncLogging::append, logging.get(),
+                                    std::placeholders::_1, std::placeholders::_2));
+        logging->start();
     }
     EventLoop loop;
     TaskWorkerPool fileWorkers(config.cacheWorkers, 128);
@@ -118,5 +138,12 @@ int main()
     server.setThreadNum(config.threads);
     server.start();
     loop.loop();
+    if (logging)
+    {
+        Logger::setOutput([](const char* message, int length) {
+            fwrite(message, 1, length, stdout);
+        });
+        logging->stop();
+    }
     return 0;
 }

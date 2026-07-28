@@ -28,6 +28,12 @@ void readString(const std::map<std::string, std::string>& environment, const cha
     if (found != environment.end() && !found->second.empty()) *value = found->second;
 }
 
+void readLogEnabled(const std::map<std::string, std::string>& environment, bool* value)
+{
+    std::map<std::string, std::string>::const_iterator found = environment.find("AR_LOG_ENABLED");
+    if (found != environment.end() && found->second == "false") *value = false;
+}
+
 bool readNumber(const std::map<std::string, std::string>& environment, const char* name,
                 unsigned long long minimum, unsigned long long maximum,
                 unsigned long long* value, std::vector<std::string>* errors)
@@ -51,7 +57,9 @@ namespace ar {
 
 AppConfig::AppConfig()
     : host("0.0.0.0"), port(8080), threads(3), cacheCapacity(200), dbWorkers(4),
-      cacheWorkers(4), maxBodyBytes(1048576), staticRoot("WebApps/ARServer/www"),
+      cacheWorkers(4), maxBodyBytes(1048576), logEnabled(true),
+      logRollSizeBytes(100U * 1024U * 1024U), logFlushIntervalSeconds(3),
+      logRetentionDays(7), staticRoot("WebApps/ARServer/www"),
       mysqlHost("127.0.0.1"), mysqlPort(3306), mysqlUser("ar_app"),
       mysqlDatabase("webserver"), mysqlPoolSize(8), redisHost("127.0.0.1"),
       redisPort(6379), redisPoolSize(8), sessionTtlSeconds(1800), testDbDelayMs(0) {}
@@ -67,6 +75,7 @@ bool AppConfig::fromMap(const std::map<std::string, std::string>& environment, b
     readString(environment, "MYSQL_USER", &config->mysqlUser);
     readString(environment, "MYSQL_DATABASE", &config->mysqlDatabase);
     readString(environment, "REDIS_HOST", &config->redisHost);
+    readLogEnabled(environment, &config->logEnabled);
     std::map<std::string, std::string>::const_iterator password = environment.find("MYSQL_PASSWORD");
     if (password != environment.end()) config->mysqlPassword = password->second;
     unsigned long long value = config->port;
@@ -93,6 +102,15 @@ bool AppConfig::fromMap(const std::map<std::string, std::string>& environment, b
     if (readNumber(environment, "MAX_BODY_BYTES", 1, static_cast<unsigned long long>(SIZE_MAX), &value, errors)) config->maxBodyBytes = static_cast<size_t>(value);
     value = config->testDbDelayMs;
     if (readNumber(environment, "AR_TEST_DB_DELAY_MS", 0, 1000, &value, errors)) config->testDbDelayMs = static_cast<int>(value);
+    value = config->logRollSizeBytes / (1024U * 1024U);
+    if (readNumber(environment, "AR_LOG_ROLL_SIZE_MB", 1, 1024, &value, errors))
+        config->logRollSizeBytes = static_cast<size_t>(value) * 1024U * 1024U;
+    value = config->logFlushIntervalSeconds;
+    if (readNumber(environment, "AR_LOG_FLUSH_INTERVAL", 1, 3600, &value, errors))
+        config->logFlushIntervalSeconds = static_cast<int>(value);
+    value = config->logRetentionDays;
+    if (readNumber(environment, "AR_LOG_RETENTION_DAYS", 0, 3650, &value, errors))
+        config->logRetentionDays = static_cast<int>(value);
     if (mysqlEnabled && config->mysqlPassword.empty()) errors->push_back("MYSQL_PASSWORD is required");
     return errors->empty();
 }
@@ -102,7 +120,9 @@ bool AppConfig::fromEnvironment(bool mysqlEnabled, AppConfig* config, std::vecto
     const char* names[] = {"AR_HOST", "AR_PORT", "AR_THREADS", "AR_STATIC_ROOT", "AR_CACHE_CAPACITY",
                            "MYSQL_HOST", "MYSQL_PORT", "MYSQL_USER", "MYSQL_PASSWORD", "MYSQL_DATABASE",
                            "MYSQL_POOL_SIZE", "REDIS_HOST", "REDIS_PORT", "REDIS_POOL_SIZE", "DB_WORKERS",
-                           "CACHE_WORKERS", "SESSION_TTL_SECONDS", "MAX_BODY_BYTES", "AR_TEST_DB_DELAY_MS"};
+                           "CACHE_WORKERS", "SESSION_TTL_SECONDS", "MAX_BODY_BYTES", "AR_TEST_DB_DELAY_MS",
+                           "AR_LOG_ENABLED", "AR_LOG_ROLL_SIZE_MB", "AR_LOG_FLUSH_INTERVAL",
+                           "AR_LOG_RETENTION_DAYS"};
     std::map<std::string, std::string> environment;
     for (size_t index = 0; index < sizeof(names) / sizeof(names[0]); ++index)
     {

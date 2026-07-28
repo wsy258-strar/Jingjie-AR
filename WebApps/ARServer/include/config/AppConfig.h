@@ -18,6 +18,10 @@ struct AppConfig
     int dbWorkers;
     int cacheWorkers;
     size_t maxBodyBytes;
+    bool logEnabled;
+    size_t logRollSizeBytes;
+    int logFlushIntervalSeconds;
+    int logRetentionDays;
     std::string staticRoot;
     std::string mysqlHost;
     uint16_t mysqlPort;

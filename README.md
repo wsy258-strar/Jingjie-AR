@@ -119,6 +119,8 @@ MYSQL_PWD="$MYSQL_PASSWORD" mysql -h "$MYSQL_HOST" -P "$MYSQL_PORT" \
 
 环境变量示例见 [WebApps/ARServer/.env.example](WebApps/ARServer/.env.example)。其中 `AR_STATIC_ROOT` 默认是 `WebApps/ARServer/www`，因此请从项目根目录启动程序。
 
+服务默认异步写入项目根目录的 `logs/ar_server.*.log`，单个文件达到 `AR_LOG_ROLL_SIZE_MB`（默认 100 MB）后自动滚动，并在启动时清理超过 `AR_LOG_RETENTION_DAYS`（默认 7 天）的本服务日志。`AR_LOG_FLUSH_INTERVAL` 的默认值为 3 秒。设置 `AR_LOG_ENABLED=false` 可关闭文件落盘，日志将继续输出到终端；将 `AR_LOG_RETENTION_DAYS` 设为 `0` 可关闭自动清理。
+
 ### 3. 构建与启动
 
 ```bash
