@@ -6,7 +6,7 @@
 #include <dirent.h>
 #include <sys/stat.h>
 #include <unistd.h>
-
+#include <ctime>
 namespace {
 
 void setError(std::string* error, const std::string& message)
