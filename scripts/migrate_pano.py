@@ -223,14 +223,26 @@ def parse_source(index_path):
 
 
 def asset_url(value):
-    """Map a source-local resource path to its deployment-safe /assets path."""
+    """Prefix a source-authored local resource path with ``/assets/``."""
+    source_path = source_asset_path(value)
+    if not source_path:
+        return ""
+    for source_prefix, destination_prefix in ASSET_PREFIXES.items():
+        if source_path.startswith(source_prefix):
+            return "/assets/" + destination_prefix + source_path[len(source_prefix):]
+    raise ValueError("unsupported asset URL %r" % value)
+
+
+def source_asset_path(value):
+    """Return the local portion of an allowed source asset URL without renaming it."""
     if not value:
         return ""
     if not isinstance(value, str):
         raise ValueError("asset URL must be a string")
-    for source_prefix, destination_prefix in ASSET_PREFIXES.items():
-        if value.startswith(source_prefix):
-            return "/assets/" + destination_prefix + value[len(source_prefix):]
+    for source_prefix in ASSET_PREFIXES:
+        position = value.find(source_prefix)
+        if position >= 0:
+            return value[position:]
     raise ValueError("unsupported asset URL %r" % value)
 
 
@@ -263,11 +275,10 @@ def normalize_hotspot(raw, pano_to_scene, artwork_by_signature):
     raise ValueError("无法识别热点 %s" % raw.get("id"))
 
 
-def scene_views(xml_text):
+def scene_views(xml_root):
     """Extract source-authored view settings from the initial-state krpano XML."""
-    root = element_tree.fromstring(xml_text)
     views = {}
-    for pano in root.findall("./config/panos/pano"):
+    for pano in xml_root.findall("./config/panos/pano"):
         view = pano.find("view")
         if view is None:
             continue
@@ -280,42 +291,120 @@ def scene_views(xml_text):
     return views
 
 
+def unique_mapping(entries, label):
+    """Build a scene-id map while rejecting duplicate scene or pano identities."""
+    by_scene = {}
+    seen_panos = set()
+    for entry in entries:
+        scene_id = str(entry["id"])
+        pano_id = str(entry["panoId"])
+        if scene_id in by_scene or pano_id in seen_panos:
+            raise ValueError("duplicate %s sceneId/panoId: %s/%s" %
+                             (label, scene_id, pano_id))
+        by_scene[scene_id] = entry
+        seen_panos.add(pano_id)
+    return by_scene
+
+
+def scene_resources(xml_text, raw_scene_by_id, categories):
+    """Read scene URLs from XML and thumbnail URLs from category scene records."""
+    root = element_tree.fromstring(xml_text)
+    xml_by_scene = {}
+    xml_panos = set()
+    for scene in root.findall("./scene"):
+        scene_id = scene.attrib.get("scene_id")
+        pano_id = scene.attrib.get("pano_id")
+        if not scene_id or not pano_id or scene.attrib.get("name") != "s_" + scene_id:
+            raise ValueError("invalid XML scene identity")
+        if scene_id in xml_by_scene or pano_id in xml_panos:
+            raise ValueError("duplicate XML sceneId/panoId: %s/%s" % (scene_id, pano_id))
+        previews = scene.findall("./preview")
+        cubes = scene.findall("./image/cube")
+        if len(previews) != 1 or len(cubes) != 1:
+            raise ValueError("missing or duplicate XML preview/cube for scene %s" % scene_id)
+        preview_url = previews[0].attrib.get("url")
+        cube_url = cubes[0].attrib.get("url")
+        if not preview_url or not cube_url:
+            raise ValueError("missing XML preview/cube URL for scene %s" % scene_id)
+        xml_by_scene[scene_id] = {
+            "panoId": pano_id,
+            "preview": preview_url,
+            "cube": cube_url,
+        }
+        xml_panos.add(pano_id)
+
+    thumbnails = {}
+    thumb_panos = set()
+    for category in categories:
+        for scene in category.get("scenes", []):
+            scene_id = str(scene.get("id", ""))
+            pano_id = str(scene.get("panoId", ""))
+            thumb = scene.get("thumb")
+            if not scene_id or not pano_id or not thumb:
+                raise ValueError("invalid category scene thumbnail record")
+            if scene_id in thumbnails or pano_id in thumb_panos:
+                raise ValueError("duplicate category sceneId/panoId: %s/%s" %
+                                 (scene_id, pano_id))
+            thumbnails[scene_id] = {"panoId": pano_id, "thumb": thumb}
+            thumb_panos.add(pano_id)
+
+    if set(raw_scene_by_id) != set(xml_by_scene) or set(raw_scene_by_id) != set(thumbnails):
+        raise ValueError("source scene records do not match XML/category scene records")
+    resources = {}
+    for scene_id, raw_scene in raw_scene_by_id.items():
+        pano_id = str(raw_scene["panoId"])
+        if xml_by_scene[scene_id]["panoId"] != pano_id or thumbnails[scene_id]["panoId"] != pano_id:
+            raise ValueError("scene/pano mismatch for scene %s" % scene_id)
+        resources[scene_id] = {
+            "preview": xml_by_scene[scene_id]["preview"],
+            "cube": xml_by_scene[scene_id]["cube"],
+            "thumb": thumbnails[scene_id]["thumb"],
+        }
+    return root, resources
+
+
 def truthy_source(value):
     return value in (True, 1, "1", "true", "True")
 
 
-def copied_asset_paths(state, scenes):
-    """Yield every source resource represented by the normalized configuration."""
+def copied_asset_paths(raw_scenes, resources):
+    """Yield the exact source paths used by the source-authored resource records."""
     yielded = set()
 
-    def add(path):
+    def add_url(url):
+        path = source_asset_path(url)
         if path and path not in yielded:
             yielded.add(path)
             return path
         return None
 
-    for scene in scenes:
-        pano_id = str(scene["panoId"])
+    for scene in raw_scenes:
+        scene_id = str(scene["id"])
+        resource = resources[scene_id]
+        added = add_url(resource["preview"])
+        if added:
+            yield added
+        cube = source_asset_path(resource["cube"])
+        if cube.count("%s") != 1:
+            raise ValueError("cube URL must contain exactly one %%s placeholder for scene %s" % scene_id)
         for face in "bdflru":
-            path = "/pano/%s/%s_%s.jpg" % (pano_id, pano_id, face)
-            added = add(path)
+            added = add_url(cube.replace("%s", face))
             if added:
                 yield added
-        for filename in ("preview.jpg", "thumb.jpg"):
-            added = add("/pano/%s/%s" % (pano_id, filename))
-            if added:
-                yield added
+        added = add_url(resource["thumb"])
+        if added:
+            yield added
         sound = scene.get("sound", {})
-        added = add(sound.get("url", ""))
+        added = add_url(sound.get("url", "")) if sound.get("url") else None
         if added:
             yield added
         for hotspot in scene.get("hotspot", []):
-            added = add(hotspot.get("iconUrl", ""))
+            added = add_url(hotspot.get("iconUrl", "")) if hotspot.get("iconUrl") else None
             if added:
                 yield added
             if isinstance(hotspot.get("data"), list):
                 for item in hotspot["data"]:
-                    added = add(item["image"])
+                    added = add_url(item["image"])
                     if added:
                         yield added
 
@@ -352,13 +441,46 @@ def asset_manifest(assets_root):
     return entries
 
 
+def is_within(path, parent):
+    """Whether *path* is equal to or contained by *parent*."""
+    try:
+        path.relative_to(parent)
+        return True
+    except ValueError:
+        return False
+
+
+def validate_paths(source, config_path, assets_path, manifest_path):
+    """Resolve all paths and reject every output that could overwrite source data."""
+    source = source.resolve()
+    source_assets = (source / "assets").resolve()
+    config_path = config_path.resolve()
+    assets_path = assets_path.resolve()
+    manifest_path = manifest_path.resolve()
+    if not source.is_dir() or not source_assets.is_dir():
+        raise ValueError("source and source/assets must be existing directories")
+    for label, output in (("assets", assets_path), ("config", config_path),
+                          ("manifest", manifest_path)):
+        if is_within(output, source) or is_within(source, output):
+            raise ValueError("unsafe %s path overlaps source: %s" % (label, output))
+    for label, output in (("config", config_path), ("manifest", manifest_path)):
+        if is_within(output, assets_path):
+            raise ValueError("unsafe %s path is inside assets output: %s" % (label, output))
+    return source, config_path, assets_path, manifest_path
+
+
 def migrate(source, config_path, assets_path, manifest_path):
+    source, config_path, assets_path, manifest_path = validate_paths(
+        source, config_path, assets_path, manifest_path)
     state = parse_source(source / "index.html")
     product = state["data"]["product"]
     property_data = product["property"]
     raw_scenes = product["config"]["scenes"]
+    raw_scene_by_id = unique_mapping(raw_scenes, "initial-state")
     pano_to_scene = {str(scene["panoId"]): str(scene["id"]) for scene in raw_scenes}
-    views = scene_views(state["xml"])
+    xml_root, resources = scene_resources(state["xml"], raw_scene_by_id,
+                                          product["config"].get("category", []))
+    views = scene_views(xml_root)
     artworks = []
     artwork_by_signature = {}
     scenes = []
@@ -389,9 +511,9 @@ def migrate(source, config_path, assets_path, manifest_path):
             "sceneId": scene_id,
             "panoId": pano_id,
             "name": raw_scene.get("name", ""),
-            "previewUrl": asset_url("/pano/%s/preview.jpg" % pano_id),
-            "cubeUrl": asset_url("/pano/%s/%s_%%s.jpg" % (pano_id, pano_id)),
-            "thumbnailUrl": asset_url("/pano/%s/thumb.jpg" % pano_id),
+            "previewUrl": asset_url(resources[scene_id]["preview"]),
+            "cubeUrl": asset_url(resources[scene_id]["cube"]),
+            "thumbnailUrl": asset_url(resources[scene_id]["thumb"]),
             "musicUrl": asset_url(sound.get("url", "")),
             "musicVolume": float(sound.get("volume", 0)),
             "musicAutoplay": truthy_source(sound.get("autoPlay", False)),
@@ -411,7 +533,7 @@ def migrate(source, config_path, assets_path, manifest_path):
         "artworks": artworks,
         "scenes": scenes,
     }
-    copy_assets(source / "assets", assets_path, copied_asset_paths(state, raw_scenes))
+    copy_assets(source / "assets", assets_path, copied_asset_paths(raw_scenes, resources))
     config_path.parent.mkdir(parents=True, exist_ok=True)
     config_path.write_text(json.dumps(output, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     manifest_path.parent.mkdir(parents=True, exist_ok=True)
