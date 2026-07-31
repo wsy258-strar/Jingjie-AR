@@ -73,6 +73,7 @@ bool AppConfig::fromMap(const std::map<std::string, std::string>& environment, b
     readString(environment, "AR_HOST", &config->host);
     readString(environment, "AR_STATIC_ROOT", &config->staticRoot);
     readString(environment, "AR_EXHIBITION_CONFIG", &config->exhibitionConfig);
+    readString(environment, "AR_ALLOWED_ORIGIN", &config->allowedOrigin);
     readString(environment, "MYSQL_HOST", &config->mysqlHost);
     readString(environment, "MYSQL_USER", &config->mysqlUser);
     readString(environment, "MYSQL_DATABASE", &config->mysqlDatabase);
@@ -113,6 +114,8 @@ bool AppConfig::fromMap(const std::map<std::string, std::string>& environment, b
     value = config->logRetentionDays;
     if (readNumber(environment, "AR_LOG_RETENTION_DAYS", 0, 3650, &value, errors))
         config->logRetentionDays = static_cast<int>(value);
+    if (config->allowedOrigin.find('*') != std::string::npos)
+        errors->push_back("AR_ALLOWED_ORIGIN must be one exact origin without wildcards");
     if (mysqlEnabled && config->mysqlPassword.empty()) errors->push_back("MYSQL_PASSWORD is required");
     return errors->empty();
 }
@@ -120,7 +123,7 @@ bool AppConfig::fromMap(const std::map<std::string, std::string>& environment, b
 bool AppConfig::fromEnvironment(bool mysqlEnabled, AppConfig* config, std::vector<std::string>* errors)
 {
     const char* names[] = {"AR_HOST", "AR_PORT", "AR_THREADS", "AR_STATIC_ROOT",
-                           "AR_EXHIBITION_CONFIG", "AR_CACHE_CAPACITY",
+                           "AR_EXHIBITION_CONFIG", "AR_ALLOWED_ORIGIN", "AR_CACHE_CAPACITY",
                            "MYSQL_HOST", "MYSQL_PORT", "MYSQL_USER", "MYSQL_PASSWORD", "MYSQL_DATABASE",
                            "MYSQL_POOL_SIZE", "REDIS_HOST", "REDIS_PORT", "REDIS_POOL_SIZE", "DB_WORKERS",
                            "CACHE_WORKERS", "SESSION_TTL_SECONDS", "MAX_BODY_BYTES", "AR_TEST_DB_DELAY_MS",

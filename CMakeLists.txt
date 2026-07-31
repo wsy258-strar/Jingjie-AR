@@ -265,7 +265,10 @@ add_test(NAME app_config_test COMMAND app_config_test)
 add_executable(request_middleware_test tests/unit/request_middleware_test.cpp)
 target_include_directories(request_middleware_test PRIVATE ${CMAKE_SOURCE_DIR}/tests
                                                     ${CMAKE_SOURCE_DIR}/WebApps/ARServer/include)
-target_sources(request_middleware_test PRIVATE WebApps/ARServer/src/middleware/AuthMiddleware.cpp)
+target_sources(request_middleware_test PRIVATE
+    WebApps/ARServer/src/middleware/AuthMiddleware.cpp
+    WebApps/ARServer/src/utils/ApiError.cpp
+    WebApps/ARServer/src/utils/JsonUtil.cpp)
 target_link_libraries(request_middleware_test src_lib memory_lib ${LIBS})
 add_test(NAME request_middleware_test COMMAND request_middleware_test)
 endif()

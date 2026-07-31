@@ -1,19 +1,18 @@
 // ARServer 进程入口：加载环境配置、构造 EventLoop 与应用，并启动 HTTP 监听。
 #include <ARServer.h>
 #include <catalog/ExhibitionCatalog.h>
+#include <config/AppConfig.h>
+#include <handlers/ArtworkInteractionHandlers.h>
 #include <handlers/AuthHandler.h>
 #include <handlers/SceneHandlers.h>
+#include <handlers/VisitorHandlers.h>
+#include <services/ArtworkInteractionService.h>
 #include <services/AuthService.h>
 #include <services/DaoAuthStore.h>
 #include <services/DaoSessionStore.h>
-#include <services/CachedSessionStore.h>
-#include <services/SessionService.h>
-#include <handlers/SessionHandlers.h>
-#include <handlers/PresenceHandlers.h>
-#include <handlers/SceneInteractionHandlers.h>
-#include <config/AppConfig.h>
 #include <services/PresenceService.h>
-#include <services/SceneInteractionService.h>
+#include <services/SessionService.h>
+#include <services/VisitorSessionService.h>
 
 #include <base/TaskWorkerPool.h>
 #include <http/StaticFileHandler.h>
@@ -24,13 +23,14 @@
 #include <net/InetAddress.h>
 
 #ifdef HAS_MYSQL
+#include <db/ArtworkInteractionDAO.h>
 #include <db/DBWorkerPool.h>
+#include <db/ExhibitionStatisticsDAO.h>
 #include <db/MySQLConnectionPool.h>
 #include <db/SessionDAO.h>
 #endif
 #ifdef HAS_REDIS
 #include <cache/RedisConnectionPool.h>
-#include <cache/SessionCache.h>
 #endif
 
 #include <cstdlib>
@@ -81,76 +81,96 @@ int main()
         logging->start();
     }
     EventLoop loop;
-    TaskWorkerPool fileWorkers(config.cacheWorkers, 128);
+    std::unique_ptr<TaskWorkerPool> fileWorkers(
+        new TaskWorkerPool(config.cacheWorkers, 128));
     StaticFileHandler files(config.staticRoot, StaticFileHandler::CacheGet(),
-                            StaticFileHandler::CachePut(), &fileWorkers, 1024 * 1024);
+                            StaticFileHandler::CachePut(), fileWorkers.get(), 1024 * 1024);
+#ifdef HAS_MYSQL
+    MySQLConnectionPool::ConnInfo mysqlInfo = {
+        config.mysqlHost, config.mysqlPort, config.mysqlUser,
+        config.mysqlPassword, config.mysqlDatabase};
+    std::unique_ptr<MySQLConnectionPool> mysqlPool(
+        new MySQLConnectionPool(mysqlInfo, config.mysqlPoolSize));
+    std::unique_ptr<DBWorkerPool> dbWorkers(
+        new DBWorkerPool(mysqlPool.get(), config.dbWorkers));
+    std::unique_ptr<SessionDAO> sessionDao(new SessionDAO(dbWorkers.get()));
+    std::unique_ptr<ArtworkInteractionDAO> artworkDao(
+        new ArtworkInteractionDAO(dbWorkers.get()));
+    std::unique_ptr<ExhibitionStatisticsDAO> statisticsDao(
+        new ExhibitionStatisticsDAO(dbWorkers.get()));
+    std::unique_ptr<ar::DaoAuthStore> authStore(new ar::DaoAuthStore(sessionDao.get()));
+    std::unique_ptr<ar::DaoSessionStore> sessionStore(
+        new ar::DaoSessionStore(sessionDao.get()));
+#endif
+
 #ifdef HAS_REDIS
     std::unique_ptr<RedisConnectionPool> redisPool(new RedisConnectionPool(
         config.redisHost, config.redisPort, config.redisPoolSize));
-    std::unique_ptr<SessionCache> sessionCache(new SessionCache(redisPool.get()));
-    std::unique_ptr<ar::SessionCacheAdapter> sessionCacheAdapter(
-        new ar::SessionCacheAdapter(sessionCache.get()));
+    std::unique_ptr<ar::RedisVisitorStore> visitorStore(
+        new ar::RedisVisitorStore(redisPool.get()));
+    std::unique_ptr<ar::RedisPresenceStore> presenceStore(
+        new ar::RedisPresenceStore(redisPool.get()));
 #endif
+
 #ifdef HAS_MYSQL
-    std::unique_ptr<MySQLConnectionPool> mysqlPool;
-    std::unique_ptr<DBWorkerPool> dbWorkers;
-    std::unique_ptr<SessionDAO> sessionDao;
-    std::unique_ptr<ar::DaoAuthStore> authStore;
-    std::unique_ptr<ar::DaoSessionStore> sessionStore;
-    std::unique_ptr<ar::CachedSessionStore> cachedSessionStore;
-    std::unique_ptr<SceneInteractionDAO> interactionDao;
-    const char* password = config.mysqlPassword.c_str();
-    if (password && *password)
-    {
-        MySQLConnectionPool::ConnInfo info = {config.mysqlHost.c_str(), config.mysqlPort,
-                                               config.mysqlUser.c_str(), password,
-                                               config.mysqlDatabase.c_str()};
-        mysqlPool.reset(new MySQLConnectionPool(info, config.mysqlPoolSize));
-        dbWorkers.reset(new DBWorkerPool(mysqlPool.get(), config.dbWorkers));
-        sessionDao.reset(new SessionDAO(dbWorkers.get()));
-        interactionDao.reset(new SceneInteractionDAO(dbWorkers.get()));
-        authStore.reset(new ar::DaoAuthStore(sessionDao.get()));
-        sessionStore.reset(new ar::DaoSessionStore(sessionDao.get()));
-#ifdef HAS_REDIS
-        cachedSessionStore.reset(new ar::CachedSessionStore(sessionStore.get(),
-                                                             sessionCacheAdapter.get(), &fileWorkers));
-#endif
-    }
     ar::AuthService authService(authStore.get());
-    ar::SessionService sessionService(
-#ifdef HAS_REDIS
-        cachedSessionStore.get()
-#else
-        sessionStore.get()
-#endif
-    );
+    ar::SessionService sessionService(sessionStore.get());
 #else
     ar::AuthService authService(0);
     ar::SessionService sessionService(0);
 #endif
-    ar::SceneInteractionService interactionService(&sessionService,
+    ar::ArtworkInteractionService artworkService(
+        catalog.get(), &sessionService,
 #ifdef HAS_MYSQL
-                                                    interactionDao.get()
+        artworkDao.get()
 #else
-                                                    0
+        0
 #endif
     );
-    ar::AuthHandler authHandler(&authService);
-    std::unique_ptr<ar::RedisPresenceStore> presenceStore;
+    ar::VisitorSessionService visitorService(
 #ifdef HAS_REDIS
-    presenceStore.reset(new ar::RedisPresenceStore(redisPool.get()));
+        visitorStore.get()
+#else
+        0
 #endif
-    ar::PresenceService presenceService(presenceStore.get());
-    ar::SessionHandlers sessionHandlers(&sessionService, &presenceService, &fileWorkers,
-                                        config.testDbDelayMs);
-    ar::PresenceHandlers presenceHandlers(&presenceService, &sessionService, &fileWorkers);
+    );
+    ar::PresenceService presenceService(
+#ifdef HAS_REDIS
+        presenceStore.get()
+#else
+        0
+#endif
+    );
+
+    std::unique_ptr<TaskWorkerPool> visitorWorkers(
+        new TaskWorkerPool(config.cacheWorkers, 128));
+    ar::AuthHandler authHandler(&authService);
     ar::SceneHandlers sceneHandlers(catalog.get());
-    ar::SceneInteractionHandlers interactionHandlers(&interactionService);
-    ar::ARServer server(&loop, InetAddress(config.port), &authHandler, &sessionHandlers,
-                        &presenceHandlers, &sceneHandlers, &interactionHandlers, &files);
-    server.setThreadNum(config.threads);
-    server.start();
-    loop.loop();
+    ar::ArtworkInteractionHandlers artworkHandlers(&artworkService);
+    ar::VisitorHandlers visitorHandlers(
+        &visitorService, &presenceService,
+#ifdef HAS_MYSQL
+        statisticsDao.get(),
+#else
+        0,
+#endif
+        visitorWorkers.get(), catalog->exhibitionId());
+
+    {
+        ar::ARServer server(&loop, InetAddress(config.port, config.host), config.allowedOrigin,
+                            &authHandler, &visitorHandlers, &sceneHandlers,
+                            &artworkHandlers, &files);
+        server.setThreadNum(config.threads);
+        server.start();
+        loop.loop();
+    }
+
+    // 先停止接受请求，再依次排空文件、访客和数据库任务，避免异步回调越过依赖生命周期。
+    fileWorkers.reset();
+    visitorWorkers.reset();
+#ifdef HAS_MYSQL
+    dbWorkers.reset();
+#endif
     if (logging)
     {
         Logger::setOutput([](const char* message, int length) {

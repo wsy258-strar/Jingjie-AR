@@ -1,6 +1,8 @@
 // 注册/登录 HTTP 处理实现：参数校验在边界完成，密码与会话逻辑交由 AuthService。
 #include <handlers/AuthHandler.h>
 #include <services/AuthService.h>
+#include <utils/ApiError.h>
+#include <utils/ApiResponse.h>
 
 namespace {
 
@@ -63,9 +65,9 @@ bool AuthHandler::validate(const HttpRequest& request, HttpResponse* response)
     if (AuthHandler::credentials(request, &username, &password)) return true;
     if (response)
     {
-        response->setStatusCode(HttpResponse::k400BadRequest);
-        response->setContentType("application/json; charset=utf-8");
-        response->setBody("{\"error\":\"missing username or password\"}");
+        *response = makeApiError(HttpResponse::k400BadRequest, "INVALID_CREDENTIALS",
+                                 "missing username or password",
+                                 request.attribute("request_id"));
     }
     return false;
 }
@@ -74,19 +76,28 @@ void AuthHandler::handle(const HttpRequest& request, const AsyncResponder& respo
 {
     HttpResponse invalid(false);
     if (!validate(request, &invalid)) { responder.send(invalid); return; }
-    if (!service_) { HttpResponse response(false); response.setStatusCode(HttpResponse::k503ServiceUnavailable); responder.send(response); return; }
+    if (!service_)
+    {
+        responder.send(makeApiError(HttpResponse::k503ServiceUnavailable,
+                                    "SERVICE_UNAVAILABLE", "authentication service unavailable",
+                                    request.attribute("request_id")));
+        return;
+    }
     std::string username;
     std::string password;
     AuthHandler::credentials(request, &username, &password);
+    const std::string requestId = request.attribute("request_id");
     service_->authenticate(username, password,
-        [responder](const AuthResult& result, int status) {
-            HttpResponse response(false);
-            response.setStatusCode(static_cast<HttpResponse::HttpStatusCode>(status));
-            response.setContentType("application/json; charset=utf-8");
-            if (status == 200) response.setBody(AuthService::json(result));
-            else if (status == 401) response.setBody("{\"error\":\"invalid password\"}");
-            else response.setBody("{\"error\":\"service unavailable\"}");
-            responder.send(response);
+        [responder, requestId](const AuthResult& result, int status) {
+            if (status == 200)
+                responder.send(makeApiSuccess(AuthService::json(result)));
+            else if (status == 401)
+                responder.send(makeApiError(HttpResponse::k401Unauthorized, "INVALID_PASSWORD",
+                                            "invalid password", requestId));
+            else
+                responder.send(makeApiError(HttpResponse::k503ServiceUnavailable,
+                                            "SERVICE_UNAVAILABLE",
+                                            "authentication service unavailable", requestId));
         });
 }
 

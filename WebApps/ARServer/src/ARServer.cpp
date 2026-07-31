@@ -1,11 +1,10 @@
 // ARServer 路由和依赖装配实现：将框架 HTTP 抽象连接到业务处理器。
 #include <ARServer.h>
 
+#include <handlers/ArtworkInteractionHandlers.h>
 #include <handlers/AuthHandler.h>
-#include <handlers/SessionHandlers.h>
 #include <handlers/SceneHandlers.h>
-#include <handlers/PresenceHandlers.h>
-#include <handlers/SceneInteractionHandlers.h>
+#include <handlers/VisitorHandlers.h>
 #include <middleware/AuthMiddleware.h>
 #include <http/StaticFileHandler.h>
 #include <middleware/AccessLogMiddleware.h>
@@ -16,21 +15,29 @@
 
 namespace ar {
 
-ARServer::ARServer(EventLoop* loop, const InetAddress& address, AuthHandler* auth, SessionHandlers* sessions,
-                   PresenceHandlers* presence, SceneHandlers* scenes,
-                   SceneInteractionHandlers* interactions, StaticFileHandler* files)
+ARServer::ARServer(EventLoop* loop, const InetAddress& address,
+                   const std::string& allowedOrigin,
+                   AuthHandler* auth,
+                   VisitorHandlers* visitors,
+                   SceneHandlers* scenes,
+                   ArtworkInteractionHandlers* artworks,
+                   StaticFileHandler* files)
     : server_(loop, address, "ARServer")
 {
-    CorsConfig cors;
-    cors.allowedOrigins.push_back("*");
-    cors.allowedMethods.push_back("GET");
-    cors.allowedMethods.push_back("POST");
-    cors.allowedMethods.push_back("DELETE");
-    cors.allowedMethods.push_back("OPTIONS");
-    cors.allowedHeaders.push_back("Content-Type");
-    cors.allowedHeaders.push_back("Authorization");
-    cors.maxAge = 600;
-    server_.addMiddleware(std::shared_ptr<Middleware>(new CorsMiddleware(cors)));
+    if (!allowedOrigin.empty())
+    {
+        CorsConfig cors;
+        cors.allowedOrigins.push_back(allowedOrigin);
+        cors.allowedMethods.push_back("GET");
+        cors.allowedMethods.push_back("POST");
+        cors.allowedMethods.push_back("DELETE");
+        cors.allowedMethods.push_back("OPTIONS");
+        cors.allowedHeaders.push_back("Content-Type");
+        cors.allowedHeaders.push_back("Authorization");
+        cors.allowedHeaders.push_back("X-Visitor-Token");
+        cors.maxAge = 600;
+        server_.addMiddleware(std::shared_ptr<Middleware>(new CorsMiddleware(cors)));
+    }
     server_.addMiddleware(std::shared_ptr<Middleware>(new RequestIdMiddleware()));
     server_.addMiddleware(std::shared_ptr<Middleware>(new AccessLogMiddleware()));
     server_.addMiddleware(std::shared_ptr<Middleware>(new AuthMiddleware()));
@@ -41,59 +48,62 @@ ARServer::ARServer(EventLoop* loop, const InetAddress& address, AuthHandler* aut
             auth->handle(request, responder);
         });
     }
-    if (presence)
+    if (visitors)
     {
-        server_.PostAsync("/api/session/heartbeat", [presence](const HttpRequest& request,
-                                                                 const AsyncResponder& responder) {
-            presence->heartbeat(request, responder);
+        server_.PostAsync("/api/visitors/session", [visitors](const HttpRequest& request,
+                                                                const AsyncResponder& responder) {
+            visitors->bootstrap(request, responder);
         });
-        server_.GetAsync("/api/scenes/:sceneId/members", [presence](const HttpRequest& request,
-                                                                     const AsyncResponder& responder) {
-            presence->members(request, responder);
+        server_.PostAsync("/api/presence/heartbeat", [visitors](const HttpRequest& request,
+                                                                  const AsyncResponder& responder) {
+            visitors->heartbeat(request, responder);
         });
-    }
-    if (sessions)
-    {
-        server_.GetAsync("/api/session", [sessions](const HttpRequest& request,
-                                                      const AsyncResponder& responder) {
-            sessions->get(request, responder);
-        });
-        server_.PostAsync("/api/session/enter", [sessions](const HttpRequest& request,
+        server_.PostAsync("/api/presence/exit", [visitors](const HttpRequest& request,
                                                              const AsyncResponder& responder) {
-            sessions->enter(request, responder);
+            visitors->exit(request, responder);
         });
-        server_.PostAsync("/api/session/exit", [sessions](const HttpRequest& request,
-                                                            const AsyncResponder& responder) {
-            sessions->exit(request, responder);
+        server_.GetAsync("/api/presence", [visitors](const HttpRequest& request,
+                                                       const AsyncResponder& responder) {
+            visitors->presence(request, responder);
+        });
+        server_.GetAsync("/api/statistics/views", [visitors](const HttpRequest& request,
+                                                               const AsyncResponder& responder) {
+            visitors->views(request, responder);
         });
     }
-    server_.Get("/api/scenes", [scenes](const HttpRequest& request, HttpResponse* response) {
-        scenes->list(request, response);
-    });
-    server_.Get("/api/scenes/:sceneId",
-                [scenes](const HttpRequest& request, HttpResponse* response) {
-        scenes->get(request, response);
-    });
-    if (interactions)
+    if (scenes)
     {
-        server_.GetAsync("/api/scenes/:sceneId/comments", [interactions](const HttpRequest& request,
-                                                                           const AsyncResponder& responder) {
-            interactions->comments(request, responder);
+        server_.Get("/api/scenes", [scenes](const HttpRequest& request, HttpResponse* response) {
+            scenes->list(request, response);
         });
-        server_.PostAsync("/api/scenes/:sceneId/likes", [interactions](const HttpRequest& request,
-                                                                         const AsyncResponder& responder) {
-            interactions->like(request, responder);
-        });
-        server_.DeleteAsync("/api/scenes/:sceneId/likes", [interactions](const HttpRequest& request,
-                                                                           const AsyncResponder& responder) {
-            interactions->unlike(request, responder);
-        });
-        server_.PostAsync("/api/scenes/:sceneId/comments", [interactions](const HttpRequest& request,
-                                                                            const AsyncResponder& responder) {
-            interactions->comment(request, responder);
+        server_.Get("/api/scenes/:sceneId",
+                    [scenes](const HttpRequest& request, HttpResponse* response) {
+            scenes->get(request, response);
         });
     }
-    server_.Post("/api/scenes/:sceneId/interactions", SceneHandlers::interactions);
+    if (artworks)
+    {
+        server_.GetAsync("/api/artworks/:artworkId", [artworks](const HttpRequest& request,
+                                                                  const AsyncResponder& responder) {
+            artworks->detail(request, responder);
+        });
+        server_.PostAsync("/api/artworks/:artworkId/likes", [artworks](const HttpRequest& request,
+                                                                         const AsyncResponder& responder) {
+            artworks->like(request, responder);
+        });
+        server_.DeleteAsync("/api/artworks/:artworkId/likes", [artworks](const HttpRequest& request,
+                                                                           const AsyncResponder& responder) {
+            artworks->unlike(request, responder);
+        });
+        server_.GetAsync("/api/artworks/:artworkId/comments", [artworks](const HttpRequest& request,
+                                                                            const AsyncResponder& responder) {
+            artworks->comments(request, responder);
+        });
+        server_.PostAsync("/api/artworks/:artworkId/comments", [artworks](const HttpRequest& request,
+                                                                             const AsyncResponder& responder) {
+            artworks->comment(request, responder);
+        });
+    }
     server_.setAsyncFallback([files](const HttpRequest& request, const AsyncResponder& responder) {
         if (files && (request.method() == HttpRequest::kGet || request.method() == HttpRequest::kHead))
         {

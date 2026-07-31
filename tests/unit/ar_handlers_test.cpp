@@ -80,14 +80,16 @@ int main()
     HttpResponse response(false);
     CHECK(!ar::AuthHandler::validate(request, &response));
     CHECK(response.statusCode() == HttpResponse::k400BadRequest);
-    CHECK(response.body() == "{\"error\":\"missing username or password\"}");
+    CHECK(response.body() ==
+          "{\"success\":false,\"data\":null,\"message\":\"missing username or password\","
+          "\"code\":\"INVALID_CREDENTIALS\",\"requestId\":\"\"}");
     ar::AuthResult result;
     result.username = "alice";
     result.userId = 7;
     result.sessionToken = "token";
     result.isNew = true;
     CHECK(ar::AuthService::json(result) ==
-          "{\"status\":\"ok\",\"is_new\":true,\"username\":\"alice\",\"user_id\":7,\"session_token\":\"token\"}");
+          "{\"isNew\":true,\"username\":\"alice\",\"userId\":7,\"token\":\"token\"}");
     FakeAuthStore store;
     ar::AuthService service(&store);
     bool completed = false;
@@ -110,13 +112,18 @@ int main()
     ar::AuthHandler handler(&service);
     handler.handle(authRequest, AsyncResponder([&](HttpResponse response) { asyncResponse = response; }));
     CHECK(asyncResponse.statusCode() == HttpResponse::k401Unauthorized);
-    CHECK(asyncResponse.body() == "{\"error\":\"invalid password\"}");
+    CHECK(asyncResponse.body() ==
+          "{\"success\":false,\"data\":null,\"message\":\"invalid password\","
+          "\"code\":\"INVALID_PASSWORD\",\"requestId\":\"\"}");
     HttpRequest jsonAuthRequest;
     jsonAuthRequest.setBody("{\"username\":\"alice\",\"password\":\"secret\"}");
     HttpResponse jsonAuthResponse(false);
     handler.handle(jsonAuthRequest, AsyncResponder([&](HttpResponse response) { jsonAuthResponse = response; }));
     CHECK(jsonAuthResponse.statusCode() == HttpResponse::k200Ok);
+    CHECK(jsonAuthResponse.body().find("\"success\":true") != std::string::npos);
     CHECK(jsonAuthResponse.body().find("\"username\":\"alice\"") != std::string::npos);
+    CHECK(jsonAuthResponse.body().find("\"userId\":7") != std::string::npos);
+    CHECK(jsonAuthResponse.body().find("\"token\":") != std::string::npos);
     FakeSessionStore sessionStore;
     ar::SessionService sessionService(&sessionStore);
     bool found = false;

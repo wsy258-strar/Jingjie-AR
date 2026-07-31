@@ -3,23 +3,28 @@
 
 #include <http/HttpServer.h>
 
+#include <string>
+
 class EventLoop;
 class InetAddress;
 class StaticFileHandler;
 
 namespace ar {
 class AuthHandler;
-class SessionHandlers;
-class PresenceHandlers;
 class SceneHandlers;
-class SceneInteractionHandlers;
+class ArtworkInteractionHandlers;
+class VisitorHandlers;
 
 class ARServer
 {
 public:
-    ARServer(EventLoop* loop, const InetAddress& address, AuthHandler* auth, SessionHandlers* sessions,
-             PresenceHandlers* presence, SceneHandlers* scenes,
-             SceneInteractionHandlers* interactions, StaticFileHandler* files);
+    ARServer(EventLoop* loop, const InetAddress& address,
+             const std::string& allowedOrigin,
+             AuthHandler* auth,
+             VisitorHandlers* visitors,
+             SceneHandlers* scenes,
+             ArtworkInteractionHandlers* artworks,
+             StaticFileHandler* files);
     void setThreadNum(int threads);
     void start();
 private:

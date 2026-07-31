@@ -19,6 +19,7 @@ int main()
     CHECK(config.maxBodyBytes == 1048576);
     CHECK(config.staticRoot == "WebApps/ARServer/www");
     CHECK(config.exhibitionConfig == "WebApps/ARServer/config/exhibition.json");
+    CHECK(config.allowedOrigin.empty());
     CHECK(config.testDbDelayMs == 0);
     CHECK(!ar::AppConfig::fromMap(environment, true, &config, &errors));
     CHECK(!errors.empty());
@@ -27,6 +28,7 @@ int main()
     environment["AR_THREADS"] = "6";
     environment["AR_STATIC_ROOT"] = "/srv/ar/www";
     environment["AR_EXHIBITION_CONFIG"] = "/srv/ar/exhibition.json";
+    environment["AR_ALLOWED_ORIGIN"] = "https://museum.example";
     environment["AR_CACHE_CAPACITY"] = "512";
     environment["MYSQL_HOST"] = "db.internal";
     environment["MYSQL_PORT"] = "3307";
@@ -47,6 +49,7 @@ int main()
     CHECK(config.threads == 6);
     CHECK(config.staticRoot == "/srv/ar/www");
     CHECK(config.exhibitionConfig == "/srv/ar/exhibition.json");
+    CHECK(config.allowedOrigin == "https://museum.example");
     CHECK(config.cacheCapacity == 512);
     CHECK(config.mysqlHost == "db.internal");
     CHECK(config.mysqlPort == 3307);
@@ -61,6 +64,11 @@ int main()
     CHECK(config.sessionTtlSeconds == 600);
     CHECK(config.maxBodyBytes == 2048);
     CHECK(config.testDbDelayMs == 200);
+
+    environment["AR_ALLOWED_ORIGIN"] = "*";
+    CHECK(!ar::AppConfig::fromMap(environment, false, &config, &errors));
+    CHECK(!errors.empty());
+    environment["AR_ALLOWED_ORIGIN"] = "https://museum.example";
 
     environment["AR_PORT"] = "0";
     CHECK(!ar::AppConfig::fromMap(environment, false, &config, &errors));

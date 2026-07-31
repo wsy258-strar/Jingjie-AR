@@ -24,6 +24,7 @@ struct AppConfig
     int logRetentionDays;
     std::string staticRoot;
     std::string exhibitionConfig;
+    std::string allowedOrigin;
     std::string mysqlHost;
     uint16_t mysqlPort;
     std::string mysqlUser;

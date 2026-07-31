@@ -18,11 +18,11 @@ namespace ar {
 std::string AuthService::json(const AuthResult& result)
 {
     std::ostringstream output;
-    output << "{\"status\":\"ok\",\"is_new\":"
+    output << "{\"isNew\":"
            << (result.isNew ? "true" : "false")
            << ",\"username\":\"" << JsonUtil::escape(result.username)
-           << "\",\"user_id\":" << result.userId
-           << ",\"session_token\":\"" << JsonUtil::escape(result.sessionToken)
+           << "\",\"userId\":" << result.userId
+           << ",\"token\":\"" << JsonUtil::escape(result.sessionToken)
            << "\"}";
     return output.str();
 }
