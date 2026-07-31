@@ -1,0 +1,100 @@
+{
+  "exhibition": {
+    "id": "invalid-exhibition",
+    "title": "invalid",
+    "remark": "",
+    "defaultSceneId": "missing-default"
+  },
+  "artworks": [
+    {
+      "artworkId": "duplicate-artwork",
+      "title": "first",
+      "text": "first",
+      "images": ["/assets/illustration/qihang.jpg"]
+    },
+    {
+      "artworkId": "duplicate-artwork",
+      "title": "second",
+      "text": "second",
+      "images": [
+        "https://example.com/not-local.jpg",
+        "/assets/pano/15949056"
+      ]
+    }
+  ],
+  "scenes": [
+    {
+      "sceneId": "duplicate-scene",
+      "panoId": "pano-a",
+      "name": "first",
+      "previewUrl": "/assets/pano/not-present/preview.jpg",
+      "cubeUrl": "/assets/pano/not-present/cube.jpg",
+      "thumbnailUrl": "/assets/pano/15949056/thumb.jpg",
+      "musicUrl": "/assets/music/musicword-reading-books-312690.mp3",
+      "musicVolume": 2.0,
+      "musicAutoplay": false,
+      "musicLoop": false,
+      "view": {
+        "hlookat": 181.0,
+        "vlookat": -91.0,
+        "fov": 0.0
+      },
+      "hotspots": [
+        {
+          "hotspotId": "duplicate-hotspot",
+          "title": "broken scene reference",
+          "ath": 181.0,
+          "atv": 91.0,
+          "iconUrl": "/assets/hotspot/new_spotd1_gif.png",
+          "type": "scene",
+          "targetSceneId": "missing-scene"
+        },
+        {
+          "hotspotId": "duplicate-hotspot",
+          "title": "broken artwork reference",
+          "ath": 0.0,
+          "atv": 0.0,
+          "iconUrl": "/not-assets/icon.png",
+          "type": "artwork",
+          "artworkId": "missing-artwork"
+        }
+      ]
+    },
+    {
+      "sceneId": "duplicate-scene",
+      "panoId": "pano-b",
+      "name": "second",
+      "previewUrl": "/assets/pano/15949056/preview.jpg",
+      "cubeUrl": "/assets/pano/15949056/15949056_%s_%s.jpg",
+      "thumbnailUrl": "/assets/pano/15949056/thumb.jpg",
+      "musicUrl": "/assets/music/musicword-reading-books-312690.mp3",
+      "musicVolume": 0.5,
+      "musicAutoplay": false,
+      "musicLoop": false,
+      "view": {
+        "hlookat": 0.0,
+        "vlookat": 0.0,
+        "fov": 110.0
+      },
+      "hotspots": []
+    },
+    {
+      "sceneId": "unsupported-cube-placeholder",
+      "panoId": "pano-c",
+      "name": "third",
+      "previewUrl": "/assets/pano/15949056/preview.jpg",
+      "cubeUrl": "/assets/pano/15949056/15949056_%s%d.jpg",
+      "thumbnailUrl": "/assets/pano/15949056/thumb.jpg",
+      "musicUrl": "/assets/music/musicword-reading-books-312690.mp3",
+      "musicVolume": 0.5,
+      "musicAutoplay": false,
+      "musicLoop": false,
+      "view": {
+        "hlookat": 0.0,
+        "vlookat": 0.0,
+        "fov": 110.0
+      },
+      "hotspots": []
+    }
+  ]
+}

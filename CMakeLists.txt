@@ -166,6 +166,15 @@ target_include_directories(scene_catalog_test PRIVATE ${CMAKE_SOURCE_DIR}/tests
 target_link_libraries(scene_catalog_test src_lib memory_lib ${LIBS})
 add_test(NAME scene_catalog_test COMMAND scene_catalog_test)
 
+add_executable(exhibition_catalog_test tests/unit/exhibition_catalog_test.cpp
+    WebApps/ARServer/src/catalog/ExhibitionCatalog.cpp)
+target_include_directories(exhibition_catalog_test PRIVATE ${CMAKE_SOURCE_DIR}/tests
+    ${CMAKE_SOURCE_DIR}/WebApps/ARServer/include
+    ${CMAKE_SOURCE_DIR}/third_party)
+target_link_libraries(exhibition_catalog_test src_lib memory_lib ${LIBS})
+add_test(NAME exhibition_catalog_test COMMAND exhibition_catalog_test)
+set_tests_properties(exhibition_catalog_test PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+
 add_executable(cached_session_store_test tests/unit/cached_session_store_test.cpp
     WebApps/ARServer/src/services/CachedSessionStore.cpp)
 target_include_directories(cached_session_store_test PRIVATE ${CMAKE_SOURCE_DIR}/tests

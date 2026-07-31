@@ -23,6 +23,7 @@ struct AppConfig
     int logFlushIntervalSeconds;
     int logRetentionDays;
     std::string staticRoot;
+    std::string exhibitionConfig;
     std::string mysqlHost;
     uint16_t mysqlPort;
     std::string mysqlUser;

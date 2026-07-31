@@ -60,6 +60,7 @@ AppConfig::AppConfig()
       cacheWorkers(4), maxBodyBytes(1048576), logEnabled(true),
       logRollSizeBytes(100U * 1024U * 1024U), logFlushIntervalSeconds(3),
       logRetentionDays(7), staticRoot("WebApps/ARServer/www"),
+      exhibitionConfig("WebApps/ARServer/config/exhibition.json"),
       mysqlHost("127.0.0.1"), mysqlPort(3306), mysqlUser("ar_app"),
       mysqlDatabase("webserver"), mysqlPoolSize(8), redisHost("127.0.0.1"),
       redisPort(6379), redisPoolSize(8), sessionTtlSeconds(1800), testDbDelayMs(0) {}
@@ -71,6 +72,7 @@ bool AppConfig::fromMap(const std::map<std::string, std::string>& environment, b
     *config = AppConfig(); errors->clear();
     readString(environment, "AR_HOST", &config->host);
     readString(environment, "AR_STATIC_ROOT", &config->staticRoot);
+    readString(environment, "AR_EXHIBITION_CONFIG", &config->exhibitionConfig);
     readString(environment, "MYSQL_HOST", &config->mysqlHost);
     readString(environment, "MYSQL_USER", &config->mysqlUser);
     readString(environment, "MYSQL_DATABASE", &config->mysqlDatabase);
@@ -117,7 +119,8 @@ bool AppConfig::fromMap(const std::map<std::string, std::string>& environment, b
 
 bool AppConfig::fromEnvironment(bool mysqlEnabled, AppConfig* config, std::vector<std::string>* errors)
 {
-    const char* names[] = {"AR_HOST", "AR_PORT", "AR_THREADS", "AR_STATIC_ROOT", "AR_CACHE_CAPACITY",
+    const char* names[] = {"AR_HOST", "AR_PORT", "AR_THREADS", "AR_STATIC_ROOT",
+                           "AR_EXHIBITION_CONFIG", "AR_CACHE_CAPACITY",
                            "MYSQL_HOST", "MYSQL_PORT", "MYSQL_USER", "MYSQL_PASSWORD", "MYSQL_DATABASE",
                            "MYSQL_POOL_SIZE", "REDIS_HOST", "REDIS_PORT", "REDIS_POOL_SIZE", "DB_WORKERS",
                            "CACHE_WORKERS", "SESSION_TTL_SECONDS", "MAX_BODY_BYTES", "AR_TEST_DB_DELAY_MS",
