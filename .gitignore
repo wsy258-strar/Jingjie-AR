@@ -49,3 +49,6 @@ core
 
 # ==================== 本地运行配置（绝不提交） ====================
 .env.arserver
+
+# krpano 授权运行文件由 scripts/provision_krpano.sh 安装
+WebApps/ARServer/www/assets/krp/runtime/
