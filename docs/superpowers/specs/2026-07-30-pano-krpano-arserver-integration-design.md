@@ -1,7 +1,8 @@
 # krpano 展馆前后端一体化改造设计
 
 日期：2026-07-30
-状态：已确认，待编写实施计划
+修订：2026-07-31
+状态：已按审阅意见修订，待最终确认
 
 ## 1. 背景
 
@@ -18,7 +19,7 @@
 
 1. 游客无需注册即可打开展馆、切换场景并浏览作品。
 2. 首次打开或刷新页面时记录一次不去重的展馆总浏览量。
-3. 使用匿名访客会话维护场景在线人数，不公开访客身份。
+3. 使用匿名访客会话维护整个展馆的在线人数，不按场景拆分，也不公开访客身份。
 4. 点赞和评论以“作品”为归属维度，操作前要求用户登录。
 5. 保留 krpano 播放器和已有素材，移除对原第三方全景平台接口及业务脚本的运行时依赖。
 6. 场景、作品、热点和素材信息由独立 JSON 配置维护，C++ 后端作为配置的唯一对外数据入口。
@@ -39,14 +40,14 @@
 | 对象 | 功能 | 身份要求 | 存储位置 |
 |---|---|---|---|
 | 整个展馆 | 总浏览量 | 无需登录，每次完整初始化计数一次 | MySQL |
-| 当前场景 | 在线人数 | 匿名 Visitor Token | Redis |
+| 整个展馆 | 当前在线人数 | 匿名 Visitor Token | Redis |
 | 单个作品 | 点赞、评论 | 注册或登录后的 User Token | MySQL |
 
 作品热点只是作品在场景中的展示入口。多个热点可以引用同一个 `artworkId`，其点赞数和评论数据仍归属于同一作品。
 
 ### 3.2 双 Token 模型
 
-- `Visitor Token` 用于匿名会话、场景归属和在线心跳，通过 `X-Visitor-Token` 请求头传递。
+- `Visitor Token` 用于匿名会话和展馆在线心跳，通过 `X-Visitor-Token` 请求头传递。
 - `User Token` 用于需要登录的点赞和评论，通过 `Authorization: Bearer <token>` 传递。
 - 两种 Token 均保存到浏览器 `sessionStorage`，不放入 URL。
 - 用户登录后继续沿用原 Visitor Token，避免在线统计出现重复身份。
@@ -104,7 +105,7 @@ WebApps/ARServer/www/
 职责边界：
 
 - `api-client.js`：统一请求头、响应结构、超时、错误转换和请求取消。
-- `visitor-session.js`：创建或恢复匿名会话，发送 enter、heartbeat、exit。
+- `visitor-session.js`：创建或恢复匿名会话，发送 heartbeat 和 exit。
 - `auth-session.js`：保存用户令牌、调起登录界面、处理 401。
 - `krpano-adapter.js`：封装播放器初始化、场景 XML 生成、热点创建及事件桥接。
 - `artwork-modal.js`：显示作品介绍、图集、点赞和评论。
@@ -120,8 +121,7 @@ WebApps/ARServer/www/
   → GET /api/scenes/{defaultSceneId}
   → 初始化 krpano 并先加载预览图
   → 加载立方体高清切片和热点
-  → POST /api/session/enter
-  → 每 30 秒 POST /api/session/heartbeat
+  → 每 30 秒 POST /api/presence/heartbeat
 ```
 
 用户点击作品点赞或提交评论时，如果没有 User Token，则显示登录弹窗。登录成功后重试尚未完成的操作。User Token 失效时清除本地令牌、保留评论输入并重新显示登录弹窗。
@@ -152,40 +152,40 @@ WebApps/ARServer/www/
 WebApps/ARServer/config/exhibition.json
 ```
 
-生产环境可通过 `AR_EXHIBITION_CONFIG` 指定绝对路径。配置主要结构如下：
+生产环境可通过 `AR_EXHIBITION_CONFIG` 指定绝对路径。`pano/html/index.html` 是本期展馆业务内容的唯一来源，`exhibition.json` 只对原数据做结构规范化和部署路径转换，不新增、改写或推测原页面没有的标题、作者、年份、分类、说明、热点或媒体内容。
+
+以下为省略部分长正文和配置项的结构摘录，展示出的值均来自 `pano/html/index.html`；实际生成文件必须包含原页面对应的完整正文和配置：
 
 ```json
 {
   "exhibition": {
-    "id": "jingjie-ar-museum",
-    "title": "境界 AR 数字展馆",
-    "defaultSceneId": "entrance"
+    "id": "19491365",
+    "title": "画叙勤廉·浙江美术馆馆藏作品展",
+    "defaultSceneId": "76196992"
   },
   "artworks": [
     {
-      "artworkId": "laomo-fengfan",
-      "title": "老墨风帆",
-      "artist": "作者名称",
-      "year": "创作年份",
-      "category": "作品分类",
-      "description": "作品介绍",
-      "images": ["/assets/illustration/laomo-fengfan.webp"]
+      "artworkId": "s_76196995_2",
+      "title": "《启航》",
+      "images": ["/assets/illustration/qihang.jpg"]
     }
   ],
   "scenes": [
     {
-      "sceneId": "entrance",
-      "name": "展馆入口",
-      "previewUrl": "/assets/pano/entrance/preview.jpg",
-      "cubeUrl": "/assets/pano/entrance/%s.jpg",
-      "view": { "hlookat": 0, "vlookat": 0, "fov": 90 },
+      "sceneId": "76196992",
+      "panoId": "15949056",
+      "name": "展厅入口",
+      "previewUrl": "/assets/pano/15949056/preview.jpg",
+      "cubeUrl": "/assets/pano/15949056/%s.jpg",
       "hotspots": [
         {
-          "hotspotId": "artwork-laomo",
-          "type": "artwork",
-          "ath": 20.5,
-          "atv": -3.2,
-          "artworkId": "laomo-fengfan"
+          "hotspotId": "s_76196992_0",
+          "type": "scene",
+          "title": "进入展厅",
+          "ath": -4.29546511,
+          "atv": 13.90596409,
+          "targetPanoId": "15949055",
+          "iconUrl": "/assets/hotspot/new_spotd1_gif.png"
         }
       ]
     }
@@ -202,6 +202,9 @@ WebApps/ARServer/config/exhibition.json
 - 不同热点类型缺少对应必填字段。
 - 资源路径不是 `/assets/` 下的站内路径。
 - 全景切片、预览图或必要素材不存在。
+- 规范化结果缺少原页面中已有的场景、热点、正文、图片、音乐或相关配置。
+
+原字段的迁移规则固定记录在转换工具及测试中：数字和字符串表示差异可以按目标类型规范化；旧资源路径可以统一增加 `/assets` 前缀；除此之外不允许修改业务值。原页面缺少的可选字段在 JSON 中省略，不使用占位内容补齐。无法可靠识别语义的数据保留原始字段并报告迁移错误，不通过人工猜测生成新内容。
 
 嵌套 JSON 解析采用项目固定版本的 `nlohmann/json` 单头文件依赖，版本随源码锁定，避免云服务器与本地使用不同系统包。
 
@@ -213,7 +216,7 @@ WebApps/ARServer/config/exhibition.json
 | `SceneHandler` | 返回场景列表与场景详情 |
 | `ArtworkHandler` | 返回作品详情、点赞信息和评论列表 |
 | `VisitorSessionService` | 生成安全随机 Visitor Token、恢复会话、触发浏览量记录 |
-| `PresenceService` | 维护访客当前场景、心跳与在线人数 |
+| `PresenceService` | 维护整个展馆的访客心跳与在线人数 |
 | `ArtworkInteractionService` | 校验作品、用户和内容，编排点赞评论操作 |
 | `ArtworkInteractionDAO` | 访问作品点赞和评论表 |
 | `StatisticsDAO` | 原子增加并读取展馆总浏览量 |
@@ -256,10 +259,9 @@ HTTP 状态码表达协议语义，`code` 用于前端稳定判断，不能只�
 | `POST` | `/api/visitors/session` | 无 | 创建或恢复匿名会话，并记录一次总浏览 |
 | `GET` | `/api/scenes` | 无 | 获取场景摘要列表和默认场景 |
 | `GET` | `/api/scenes/:sceneId` | 无 | 获取单个场景、视角和热点配置 |
-| `POST` | `/api/session/enter` | Visitor | 进入或切换场景 |
-| `POST` | `/api/session/heartbeat` | Visitor | 刷新当前场景在线状态 |
-| `POST` | `/api/session/exit` | Visitor | 主动退出当前场景 |
-| `GET` | `/api/scenes/:sceneId/members` | 无 | 只返回当前在线人数 |
+| `POST` | `/api/presence/heartbeat` | Visitor | 刷新当前访客的展馆在线状态 |
+| `POST` | `/api/presence/exit` | Visitor | 主动退出展馆在线集合 |
+| `GET` | `/api/presence` | 无 | 返回整个展馆当前在线人数 |
 | `GET` | `/api/statistics/views` | 无 | 查询展馆总浏览量 |
 | `GET` | `/api/artworks/:artworkId` | 可选 User | 获取作品详情、点赞数及当前用户状态 |
 | `POST` | `/api/artworks/:artworkId/likes` | User | 点赞作品 |
@@ -276,15 +278,16 @@ HTTP 状态码表达协议语义，`code` 用于前端稳定判断，不能只�
 
 ```text
 visitor:{token}         Hash/String，匿名会话，TTL 30 分钟
-visitor_scene:{token}   String，当前 sceneId，TTL 30 分钟
-presence:{sceneId}      Sorted Set，member 为 token，score 为最近心跳时间
+presence:exhibition     Sorted Set，member 为 token，score 为最近心跳时间
 ```
 
 - Visitor Token 使用安全随机数生成，不能使用递增 ID 或可预测值。
 - 心跳间隔为 30 秒，在线窗口为 60 秒。
 - 查询人数前通过 `ZREMRANGEBYSCORE` 清理超时成员，再读取 `ZCARD`。
-- enter、scene switch 和 exit 通过 Redis Lua 脚本执行相关键的原子更新，避免访客短暂同时出现在两个场景。
-- heartbeat 必须验证 Visitor Token 仍有效，并只刷新其已记录的当前场景。
+- 创建或恢复匿名会话时将 Visitor Token 写入展馆在线集合。
+- heartbeat 必须验证 Visitor Token 仍有效，再刷新其在展馆在线集合中的时间戳。
+- 场景切换不修改在线集合，也不改变展馆在线人数。
+- exit 使用 `ZREM` 主动移除 Visitor Token。
 - 页面退出使用带 `keepalive` 的请求；即使退出请求丢失，成员也会在在线窗口过期后自动移除。
 
 ### 9.2 浏览量语义
@@ -347,7 +350,7 @@ ON DUPLICATE KEY UPDATE total_views = total_views + 1;
 - 9 张预览图和 9 张缩略图。
 - 现有热点、作品说明、作品图片和音乐。
 
-原数据中的数字热点类型不能直接作为新系统类型。迁移工具先生成候选映射，再逐项人工确认其语义和目标。产物校验应检查：
+`exhibition.json` 必须由 `pano/html/index.html` 确定性生成。原数据中的数字热点类型通过固定映射转换为明确类型；如果某个类型或载荷无法可靠识别，迁移立即失败并报告原热点 ID，不允许猜测其含义或补写内容。人工复核只用于确认转换结果与原页面一致，不用于改写原内容。产物校验应检查：
 
 - 六个立方体面是否齐全。
 - 每个静态文件是否存在，并生成大小与校验和清单。
@@ -373,7 +376,7 @@ ON DUPLICATE KEY UPDATE total_views = total_views + 1;
 2. 评论长度、编码和空白内容必须在服务端校验，数据库操作必须继续使用参数化语句。
 3. 若现有密码仍使用普通 SHA-256，公开注册前升级为 Argon2id 或 bcrypt。旧哈希可在用户成功登录后自动重算为新格式，实现平滑迁移。
 4. 正式环境只接受 HTTPS，同源部署并限制 CORS，不向浏览器暴露 Redis、MySQL 或 ARServer 内部地址。
-5. 场景在线接口只返回数量，不返回匿名 Token、IP 或其他访客标识。
+5. 展馆在线接口只返回数量，不返回匿名 Token、IP、所在场景或其他访客标识。
 6. 对全景、作品图片、音乐和 krpano 播放器保留版权及授权记录。
 
 ## 14. 测试与验收
@@ -382,7 +385,7 @@ ON DUPLICATE KEY UPDATE total_views = total_views + 1;
 
 - 配置单元测试：正常配置、重复 ID、错误引用、坐标越界和非法路径。
 - API 测试：响应信封、HTTP 状态、鉴权边界、参数校验和分页。
-- Redis 集成测试：进入、重复心跳、跨场景切换、主动退出和自然过期。
+- Redis 集成测试：进入展馆、重复心跳、跨场景切换、主动退出和自然过期。
 - MySQL 集成测试：浏览量并发递增、点赞幂等、取消点赞和评论游标分页。
 - 静态资源清单测试：配置引用文件全部存在，立方体六面齐全。
 - 浏览器端测试：游客浏览、登录后互动、快速切换、高清失败降级和登录过期。
@@ -391,7 +394,7 @@ ON DUPLICATE KEY UPDATE total_views = total_views + 1;
 
 1. 清除浏览器会话后可直接进入默认场景，无登录拦截。
 2. 连续刷新三次，总浏览量准确增加三次。
-3. 两个浏览器进入同一场景，在线人数为二；一个切换场景后两侧人数同步变化。
+3. 两个浏览器进入同一或不同场景时，展馆在线人数均为二；任一浏览器切换场景后在线人数保持不变。
 4. 未登录点赞或评论时出现登录弹窗，登录后自动继续原操作。
 5. 同一用户重复点赞不会产生重复数据。
 6. 同一作品在不同场景出现时共享点赞和评论。
@@ -399,6 +402,7 @@ ON DUPLICATE KEY UPDATE total_views = total_views + 1;
 8. 快速连续切换场景时不会回跳到旧场景。
 9. Network 面板中不存在对原第三方全景平台业务接口的请求。
 10. `/assets/` 由 Nginx 直接响应，`/api/` 由 ARServer 返回。
+11. `exhibition.json` 中的场景、热点、作品正文、图片和音乐可逐项追溯到 `pano/html/index.html`，且不存在原页面没有的业务内容。
 
 完成正确性测试后，再分别对 ARServer 直连和 Nginx HTTPS 完整链路执行压测；压测结果必须同时报告并发数、RPS、P99、超时和非 2xx 数量。
 
