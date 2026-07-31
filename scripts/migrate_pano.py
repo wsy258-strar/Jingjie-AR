@@ -463,9 +463,13 @@ def validate_paths(source, config_path, assets_path, manifest_path):
                           ("manifest", manifest_path)):
         if is_within(output, source) or is_within(source, output):
             raise ValueError("unsafe %s path overlaps source: %s" % (label, output))
-    for label, output in (("config", config_path), ("manifest", manifest_path)):
-        if is_within(output, assets_path):
-            raise ValueError("unsafe %s path is inside assets output: %s" % (label, output))
+    output_paths = (("config", config_path), ("assets", assets_path),
+                    ("manifest", manifest_path))
+    for index, (left_label, left_path) in enumerate(output_paths):
+        for right_label, right_path in output_paths[index + 1:]:
+            if is_within(left_path, right_path) or is_within(right_path, left_path):
+                raise ValueError("unsafe %s and %s paths overlap: %s / %s" %
+                                 (left_label, right_label, left_path, right_path))
     return source, config_path, assets_path, manifest_path
 
 

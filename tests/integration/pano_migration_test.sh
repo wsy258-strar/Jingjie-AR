@@ -138,6 +138,44 @@ for conflict in source assets inside-source config-in-assets manifest-in-assets;
   test "$before_hashes" = "$(sha256sum "$safety_source/index.html" "$safety_source/assets/pano/15949056/preview.jpg")"
 done
 
+# Every pair of outputs must be disjoint before parsing, cleanup, or writes.
+# Each case starts with a sentinel and must leave no newly created output behind.
+for conflict in config-equals-manifest assets-inside-config assets-inside-manifest; do
+  safe_root="$tmp_dir/output-pair-$conflict"
+  sentinel="$safe_root/sentinel.txt"
+  mkdir -p "$safe_root"
+  printf '%s\n' "$conflict" > "$sentinel"
+  case "$conflict" in
+    config-equals-manifest)
+      assets="$safe_root/assets"
+      config="$safe_root/shared.json"
+      manifest="$safe_root/shared.json"
+      outputs=("$assets" "$config")
+      ;;
+    assets-inside-config)
+      config="$safe_root/config-target"
+      assets="$config/assets"
+      manifest="$safe_root/assets-manifest.json"
+      outputs=("$assets" "$manifest")
+      ;;
+    assets-inside-manifest)
+      config="$safe_root/exhibition.json"
+      manifest="$safe_root/manifest-target"
+      assets="$manifest/assets"
+      outputs=("$config" "$assets")
+      ;;
+  esac
+  if python3 scripts/migrate_pano.py \
+      --source "$safety_source" --assets "$assets" --config "$config" --manifest "$manifest"; then
+    echo "unsafe output pair accepted: $conflict" >&2
+    exit 1
+  fi
+  test "$(cat "$sentinel")" = "$conflict"
+  for output in "${outputs[@]}"; do
+    test ! -e "$output"
+  done
+done
+
 # Source mapping is deliberately one-to-one: missing records, duplicates, and
 # scene/pano disagreement are data errors rather than opportunities to guess.
 python3 - <<'PY'
