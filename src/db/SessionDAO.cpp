@@ -214,6 +214,52 @@ void SessionDAO::createUser(const std::string& username,
     }
 }
 
+void SessionDAO::updatePasswordHash(uint64_t userId,
+                                    const std::string& passwdHash,
+                                    const BoolCallback& callback)
+{
+    if (!dbPool_ || !dbPool_->submit([userId, passwdHash, callback](std::shared_ptr<MYSQL> conn) {
+        if (!conn)
+        {
+            callback(false);
+            return;
+        }
+        MYSQL_STMT* stmt = mysql_stmt_init(conn.get());
+        if (!stmt)
+        {
+            callback(false);
+            return;
+        }
+        const char* sql = "UPDATE users SET passwd_hash = ? WHERE id = ?";
+        if (mysql_stmt_prepare(stmt, sql, strlen(sql)) != 0)
+        {
+            mysql_stmt_close(stmt);
+            callback(false);
+            return;
+        }
+
+        MYSQL_BIND bind[2];
+        memset(bind, 0, sizeof(bind));
+        unsigned long hashLen = passwdHash.size();
+        bind[0].buffer_type = MYSQL_TYPE_STRING;
+        bind[0].buffer = const_cast<char*>(passwdHash.c_str());
+        bind[0].buffer_length = hashLen;
+        bind[0].length = &hashLen;
+        uint64_t uid = userId;
+        bind[1].buffer_type = MYSQL_TYPE_LONGLONG;
+        bind[1].buffer = &uid;
+        mysql_stmt_bind_param(stmt, bind);
+
+        const bool updated = mysql_stmt_execute(stmt) == 0 &&
+                             mysql_stmt_affected_rows(stmt) == 1;
+        mysql_stmt_close(stmt);
+        callback(updated);
+    }))
+    {
+        callback(false);
+    }
+}
+
 // ========== 会话操作 ==========
 
 void SessionDAO::findSessionByToken(const std::string& token,

@@ -68,8 +68,13 @@ int main()
     CHECK(accessLog.before(request, response));
     CHECK(!request.attribute("access_log_start_us").empty());
     accessLog.after(request, response);
-    CHECK(AccessLogMiddleware::sanitizeTarget("/api/auth?username=alice&password=secret") ==
-          "/api/auth?username=alice&password=%5BREDACTED%5D");
+    CHECK(AccessLogMiddleware::sanitizeTarget(
+              "/api/auth?username=alice&password=secret&password=second") ==
+          "/api/auth");
+    CHECK(AccessLogMiddleware::sanitizeTarget(
+              "/api/session?token=user-token&visitorToken=visitor-token") ==
+          "/api/session");
+    CHECK(AccessLogMiddleware::sanitizeTarget("/api/scenes") == "/api/scenes");
     ar::AuthMiddleware auth;
     expectAllowed(&auth, apiRequest(HttpRequest::kPost, "/api/visitors/session"));
     expectAllowed(&auth, apiRequest(HttpRequest::kGet, "/api/scenes"));

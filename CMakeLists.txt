@@ -30,6 +30,19 @@ if(NOT HTTP_FRAMEWORK_WITH_REDIS STREQUAL "OFF")
 endif()
 # AuthService is exercised by the AR handler tests even when Redis is disabled.
 find_library(CRYPTO_LIB crypto PATHS /usr/lib/x86_64-linux-gnu /usr/lib)
+set(ARGON2_ROOT "" CACHE PATH "Optional libargon2 development package prefix")
+find_path(ARGON2_INCLUDE_DIR argon2.h
+          HINTS ${ARGON2_ROOT} ${CMAKE_PREFIX_PATH}
+          PATH_SUFFIXES include)
+find_library(ARGON2_LIB NAMES argon2
+             HINTS ${ARGON2_ROOT} ${CMAKE_PREFIX_PATH}
+             PATH_SUFFIXES lib lib64 lib/x86_64-linux-gnu)
+if(NOT ARGON2_INCLUDE_DIR OR NOT EXISTS "${ARGON2_INCLUDE_DIR}/argon2.h" OR
+   NOT ARGON2_LIB OR NOT EXISTS "${ARGON2_LIB}")
+    message(FATAL_ERROR
+        "libargon2 development files are required for secure password hashing; "
+        "install libargon2-dev or set ARGON2_ROOT/CMAKE_PREFIX_PATH")
+endif()
 if(HTTP_FRAMEWORK_WITH_MYSQL STREQUAL "ON" AND NOT MYSQL_LIB)
     message(FATAL_ERROR "HTTP_FRAMEWORK_WITH_MYSQL=ON but mysqlclient was not found")
 endif()
@@ -43,7 +56,8 @@ set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 
 #设置全局链接库
-set(LIBS pthread)
+set(LIBS pthread ${ARGON2_LIB})
+include_directories(${ARGON2_INCLUDE_DIR})
 if(CRYPTO_LIB)
     list(APPEND LIBS ${CRYPTO_LIB})
 else()

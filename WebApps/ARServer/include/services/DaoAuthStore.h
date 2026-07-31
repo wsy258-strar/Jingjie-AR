@@ -10,8 +10,10 @@ class DaoAuthStore : public AuthStore
 public:
     explicit DaoAuthStore(SessionDAO* dao) : dao_(dao) {}
     void findUser(const std::string& username, const UserCallback& callback) override;
-    void createUser(const std::string& username, const std::string& password,
+    void createUser(const std::string& username, const std::string& hash,
                     const IdCallback& callback) override;
+    void updatePasswordHash(uint64_t userId, const std::string& hash,
+                            const std::function<void(bool)>& callback) override;
     void createSession(uint64_t userId, const std::string& token,
                        const IdCallback& callback) override;
 private:

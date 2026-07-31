@@ -26,8 +26,10 @@ public:
     typedef std::function<void(uint64_t)> IdCallback;
     virtual ~AuthStore() {}
     virtual void findUser(const std::string& username, const UserCallback& callback) = 0;
-    virtual void createUser(const std::string& username, const std::string& password,
+    virtual void createUser(const std::string& username, const std::string& hash,
                             const IdCallback& callback) = 0;
+    virtual void updatePasswordHash(uint64_t userId, const std::string& hash,
+                                    const std::function<void(bool)>& callback) = 0;
     virtual void createSession(uint64_t userId, const std::string& token,
                                const IdCallback& callback) = 0;
 };
@@ -43,6 +45,9 @@ public:
     static std::string passwordHash(const std::string& password);
 private:
     static std::string token();
+    static bool verifyPassword(const std::string& password, const std::string& storedHash,
+                               bool* needsUpgrade);
+    static std::string legacyPasswordHash(const std::string& password);
     void createSession(uint64_t userId, const std::string& username, bool isNew,
                        const Completion& completion);
     AuthStore* store_;

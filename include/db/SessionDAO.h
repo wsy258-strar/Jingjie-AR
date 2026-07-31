@@ -76,6 +76,11 @@ public:
                     const std::string& passwdHash,
                     const IdCallback& callback);
 
+    /// 原子持久化用户密码哈希。仅当指定用户的一行记录更新成功时回调 true。
+    void updatePasswordHash(uint64_t userId,
+                            const std::string& passwdHash,
+                            const BoolCallback& callback);
+
     // ========== 会话 ==========
 
     void findSessionByToken(const std::string& token,

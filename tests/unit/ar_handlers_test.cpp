@@ -26,12 +26,36 @@
 class FakeAuthStore : public ar::AuthStore
 {
 public:
+    FakeAuthStore()
+        : userExists(true), updateSucceeds(true), updateCalls(0), sessionCalls(0),
+          createdUserId(0), existingHash(ar::AuthService::passwordHash("secret")) {}
     void findUser(const std::string&, const UserCallback& callback) override
-    { callback(std::shared_ptr<User>(new User(7, "alice", ar::AuthService::passwordHash("secret")))); }
-    void createUser(const std::string&, const std::string&, const IdCallback& callback) override
-    { callback(0); }
+    {
+        callback(userExists
+            ? std::shared_ptr<User>(new User(7, "alice", existingHash))
+            : std::shared_ptr<User>());
+    }
+    void createUser(const std::string&, const std::string& hash, const IdCallback& callback) override
+    { createdHash = hash; callback(createdUserId); }
+    void updatePasswordHash(uint64_t userId, const std::string& hash,
+                            const std::function<void(bool)>& callback) override
+    {
+        ++updateCalls;
+        updatedUserId = userId;
+        updatedHash = hash;
+        callback(updateSucceeds);
+    }
     void createSession(uint64_t, const std::string& token, const IdCallback& callback) override
-    { createdToken = token; callback(8); }
+    { ++sessionCalls; createdToken = token; callback(8); }
+    bool userExists;
+    bool updateSucceeds;
+    int updateCalls;
+    int sessionCalls;
+    uint64_t createdUserId;
+    uint64_t updatedUserId = 0;
+    std::string existingHash;
+    std::string createdHash;
+    std::string updatedHash;
     std::string createdToken;
 };
 
@@ -71,8 +95,14 @@ int main()
     CHECK(ar::AuthHandler::credentials(preferredBodyCredentials, &username, &password));
     CHECK(username == "body-user");
     CHECK(password == "body-password");
-    CHECK(ar::AuthService::passwordHash("secret") ==
-          "sha256:2bb80d537b1da3e38bd30361aa855686bde0eacd7162fef6a25fe97bf527a25b");
+    const std::string newPasswordHash = ar::AuthService::passwordHash("secret");
+    const std::string argonPrefix = "$argon2id$v=19$m=65536,t=3,p=1$";
+    CHECK(newPasswordHash.find(argonPrefix) == 0);
+    const std::string::size_type saltEnd = newPasswordHash.find('$', argonPrefix.size());
+    CHECK(saltEnd != std::string::npos);
+    CHECK(saltEnd - argonPrefix.size() == 22);
+    CHECK(newPasswordHash.size() - saltEnd - 1 == 43);
+    CHECK(ar::AuthService::passwordHash("secret") != newPasswordHash);
     CHECK(ar::JsonUtil::escape("quote\" slash\\ control\n") ==
           "quote\\\" slash\\\\ control\\n");
     HttpRequest request;
@@ -106,6 +136,43 @@ int main()
         for (size_t index = 0; index < auth.sessionToken.size(); ++index)
             CHECK(std::isxdigit(static_cast<unsigned char>(auth.sessionToken[index])));
     });
+    CHECK(store.updateCalls == 0);
+
+    FakeAuthStore newUserStore;
+    newUserStore.userExists = false;
+    newUserStore.createdUserId = 11;
+    ar::AuthService newUserService(&newUserStore);
+    newUserService.authenticate("new-user", "secret", [&](const ar::AuthResult& auth, int status) {
+        CHECK(status == 200);
+        CHECK(auth.userId == 11);
+        CHECK(auth.isNew);
+    });
+    CHECK(newUserStore.createdHash.find("$argon2id$v=19$m=65536,t=3,p=1$") == 0);
+    CHECK(newUserStore.updateCalls == 0);
+    CHECK(newUserStore.sessionCalls == 1);
+
+    FakeAuthStore legacyStore;
+    legacyStore.existingHash =
+        "sha256:2bb80d537b1da3e38bd30361aa855686bde0eacd7162fef6a25fe97bf527a25b";
+    ar::AuthService legacyService(&legacyStore);
+    legacyService.authenticate("alice", "secret", [&](const ar::AuthResult&, int status) {
+        CHECK(status == 200);
+    });
+    CHECK(legacyStore.updateCalls == 1);
+    CHECK(legacyStore.updatedUserId == 7);
+    CHECK(legacyStore.updatedHash.find("$argon2id$v=19$m=65536,t=3,p=1$") == 0);
+    CHECK(legacyStore.sessionCalls == 1);
+
+    FakeAuthStore failedUpgradeStore;
+    failedUpgradeStore.existingHash = legacyStore.existingHash;
+    failedUpgradeStore.updateSucceeds = false;
+    ar::AuthService failedUpgradeService(&failedUpgradeStore);
+    failedUpgradeService.authenticate("alice", "secret", [&](const ar::AuthResult& auth, int status) {
+        CHECK(status == 503);
+        CHECK(auth.sessionToken.empty());
+    });
+    CHECK(failedUpgradeStore.updateCalls == 1);
+    CHECK(failedUpgradeStore.sessionCalls == 0);
     HttpRequest authRequest;
     authRequest.setQuery("username=alice&password=wrong");
     HttpResponse asyncResponse(false);
