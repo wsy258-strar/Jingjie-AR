@@ -1,0 +1,131 @@
+// 匿名访客会话只负责展馆级在线状态；故障时通过公开状态降级而不阻断场景浏览。
+import { ApiError, VISITOR_TOKEN_KEY } from "./api-client.js";
+
+const HEARTBEAT_INTERVAL_MS = 30 * 1000;
+
+function browserEventTarget() {
+  return typeof globalThis.addEventListener === "function" ? globalThis : null;
+}
+
+function browserRandomUUID() {
+  if (!globalThis.crypto || typeof globalThis.crypto.randomUUID !== "function") {
+    throw new Error("crypto.randomUUID is unavailable");
+  }
+  return globalThis.crypto.randomUUID();
+}
+
+function defaultRetryDelay() {
+  return Promise.resolve();
+}
+
+export class VisitorSession {
+  constructor({
+    client,
+    storage = typeof globalThis.sessionStorage === "undefined" ? null : globalThis.sessionStorage,
+    randomUUID = browserRandomUUID,
+    eventTarget = browserEventTarget(),
+    setIntervalImpl = globalThis.setInterval,
+    clearIntervalImpl = globalThis.clearInterval,
+    retryDelay = defaultRetryDelay
+  } = {}) {
+    if (!client) throw new Error("VisitorSession requires an ApiClient");
+    this.client = client;
+    this.storage = storage;
+    this.randomUUID = randomUUID;
+    this.eventTarget = eventTarget;
+    this.setIntervalImpl = setIntervalImpl;
+    this.clearIntervalImpl = clearIntervalImpl;
+    this.retryDelay = retryDelay;
+    this.available = false;
+    this.unavailable = false;
+    this.bootstrapRequestId = "";
+    this.bootstrapResult = null;
+    this.heartbeatTimer = null;
+    this.pagehideBound = false;
+    this.onPagehide = this.onPagehide.bind(this);
+  }
+
+  async bootstrap() {
+    let requestId = "";
+    try {
+      requestId = this.randomUUID();
+      this.bootstrapRequestId = requestId;
+      const result = await this.requestBootstrap(requestId);
+      return this.acceptBootstrap(result);
+    } catch (error) {
+      if (requestId && this.shouldRetry(error)) {
+        try {
+          await this.retryDelay();
+          return this.acceptBootstrap(await this.requestBootstrap(requestId));
+        } catch (retryError) {
+          return this.markUnavailable(retryError);
+        }
+      }
+      return this.markUnavailable(error);
+    }
+  }
+
+  requestBootstrap(bootstrapRequestId) {
+    return this.client.request("/api/visitors/session", {
+      method: "POST",
+      body: { bootstrapRequestId },
+      visitor: true
+    });
+  }
+
+  acceptBootstrap(result) {
+    if (!result || typeof result.visitorToken !== "string" || !result.visitorToken) {
+      return this.markUnavailable(new Error("visitor token is missing"));
+    }
+    if (this.storage) this.storage.setItem(VISITOR_TOKEN_KEY, result.visitorToken);
+    this.available = true;
+    this.unavailable = false;
+    this.bootstrapResult = result;
+    return result;
+  }
+
+  markUnavailable(error) {
+    this.available = false;
+    this.unavailable = true;
+    this.bootstrapResult = null;
+    this.lastError = error;
+    return null;
+  }
+
+  shouldRetry(error) {
+    return !(error instanceof ApiError) && !(error && error.name === "AbortError");
+  }
+
+  startHeartbeat() {
+    if (this.heartbeatTimer !== null) return;
+    if (typeof this.setIntervalImpl !== "function") return;
+    this.heartbeatTimer = this.setIntervalImpl(() => {
+      this.client.request("/api/presence/heartbeat", { method: "POST", visitor: true })
+        .catch(() => {});
+    }, HEARTBEAT_INTERVAL_MS);
+    if (this.eventTarget && !this.pagehideBound) {
+      this.eventTarget.addEventListener("pagehide", this.onPagehide);
+      this.pagehideBound = true;
+    }
+  }
+
+  stopHeartbeat({ sendExit = true } = {}) {
+    if (this.heartbeatTimer !== null) {
+      this.clearIntervalImpl(this.heartbeatTimer);
+      this.heartbeatTimer = null;
+    }
+    if (this.eventTarget && this.pagehideBound) {
+      this.eventTarget.removeEventListener("pagehide", this.onPagehide);
+      this.pagehideBound = false;
+    }
+    if (sendExit && this.storage && this.storage.getItem(VISITOR_TOKEN_KEY)) {
+      this.client.request("/api/presence/exit", {
+        method: "POST", visitor: true, keepalive: true
+      }).catch(() => {});
+    }
+  }
+
+  onPagehide() {
+    this.stopHeartbeat({ sendExit: true });
+  }
+}
