@@ -1,6 +1,8 @@
 // ARServer 进程入口：加载环境配置、构造 EventLoop 与应用，并启动 HTTP 监听。
 #include <ARServer.h>
+#include <catalog/ExhibitionCatalog.h>
 #include <handlers/AuthHandler.h>
+#include <handlers/SceneHandlers.h>
 #include <services/AuthService.h>
 #include <services/DaoAuthStore.h>
 #include <services/DaoSessionStore.h>
@@ -35,6 +37,7 @@
 #include <functional>
 #include <iostream>
 #include <memory>
+#include <vector>
 
 int main()
 {
@@ -50,6 +53,15 @@ int main()
     {
         for (size_t index = 0; index < configurationErrors.size(); ++index)
             std::cerr << "configuration error: " << configurationErrors[index] << std::endl;
+        return 2;
+    }
+    std::vector<std::string> catalogErrors;
+    std::unique_ptr<ar::ExhibitionCatalog> catalog =
+        ar::ExhibitionCatalog::load(config.exhibitionConfig, config.staticRoot, &catalogErrors);
+    if (!catalog)
+    {
+        for (size_t index = 0; index < catalogErrors.size(); ++index)
+            std::cerr << "exhibition configuration error: " << catalogErrors[index] << std::endl;
         return 2;
     }
     std::unique_ptr<AsyncLogging> logging;
@@ -132,9 +144,10 @@ int main()
     ar::SessionHandlers sessionHandlers(&sessionService, &presenceService, &fileWorkers,
                                         config.testDbDelayMs);
     ar::PresenceHandlers presenceHandlers(&presenceService, &sessionService, &fileWorkers);
+    ar::SceneHandlers sceneHandlers(catalog.get());
     ar::SceneInteractionHandlers interactionHandlers(&interactionService);
     ar::ARServer server(&loop, InetAddress(config.port), &authHandler, &sessionHandlers,
-                        &presenceHandlers, &interactionHandlers, &files);
+                        &presenceHandlers, &sceneHandlers, &interactionHandlers, &files);
     server.setThreadNum(config.threads);
     server.start();
     loop.loop();

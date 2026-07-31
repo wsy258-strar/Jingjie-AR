@@ -11,13 +11,15 @@ namespace ar {
 class AuthHandler;
 class SessionHandlers;
 class PresenceHandlers;
+class SceneHandlers;
 class SceneInteractionHandlers;
 
 class ARServer
 {
 public:
     ARServer(EventLoop* loop, const InetAddress& address, AuthHandler* auth, SessionHandlers* sessions,
-             PresenceHandlers* presence, SceneInteractionHandlers* interactions, StaticFileHandler* files);
+             PresenceHandlers* presence, SceneHandlers* scenes,
+             SceneInteractionHandlers* interactions, StaticFileHandler* files);
     void setThreadNum(int threads);
     void start();
 private:

@@ -1,4 +1,4 @@
-// API 错误工具：将业务/校验失败统一表示为稳定的 JSON 响应格式与 HTTP 状态码。
+// API 错误工具：统一返回 success/data/message/code/requestId 与 HTTP 状态码。
 #pragma once
 
 #include <http/HttpResponse.h>

@@ -138,9 +138,12 @@ add_test(NAME static_file_handler_test COMMAND static_file_handler_test)
 
 add_executable(ar_handlers_test tests/unit/ar_handlers_test.cpp)
 target_include_directories(ar_handlers_test PRIVATE ${CMAKE_SOURCE_DIR}/tests
-                                                    ${CMAKE_SOURCE_DIR}/WebApps/ARServer/include)
+                                                    ${CMAKE_SOURCE_DIR}/WebApps/ARServer/include
+                                                    ${CMAKE_SOURCE_DIR}/third_party)
 target_sources(ar_handlers_test PRIVATE WebApps/ARServer/src/utils/JsonUtil.cpp
                                         WebApps/ARServer/src/utils/ApiError.cpp
+                                        WebApps/ARServer/src/utils/ApiResponse.cpp
+                                        WebApps/ARServer/src/catalog/ExhibitionCatalog.cpp
                                         WebApps/ARServer/src/catalog/SceneCatalog.cpp
                                         WebApps/ARServer/src/services/ArSessionValidator.cpp
                                         WebApps/ARServer/src/handlers/AuthHandler.cpp
@@ -158,6 +161,21 @@ if(TARGET ar_data)
     target_link_libraries(ar_handlers_test ar_data)
 endif()
 add_test(NAME ar_handlers_test COMMAND ar_handlers_test)
+set_tests_properties(ar_handlers_test PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+
+add_executable(api_response_test tests/unit/api_response_test.cpp
+    WebApps/ARServer/src/utils/JsonUtil.cpp
+    WebApps/ARServer/src/utils/ApiError.cpp
+    WebApps/ARServer/src/utils/ApiResponse.cpp)
+target_include_directories(api_response_test PRIVATE ${CMAKE_SOURCE_DIR}/tests
+    ${CMAKE_SOURCE_DIR}/WebApps/ARServer/include)
+target_link_libraries(api_response_test src_lib memory_lib ${LIBS})
+add_test(NAME api_response_test COMMAND api_response_test)
+
+add_test(NAME ar_server_scene_wiring_static_test
+    COMMAND bash ${CMAKE_SOURCE_DIR}/tests/integration/ar_server_scene_wiring_static_test.sh)
+set_tests_properties(ar_server_scene_wiring_static_test
+    PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 
 add_executable(scene_catalog_test tests/unit/scene_catalog_test.cpp
     WebApps/ARServer/src/catalog/SceneCatalog.cpp)
@@ -241,9 +259,11 @@ add_executable(ar_server
     WebApps/ARServer/src/main.cpp
     WebApps/ARServer/src/ARServer.cpp
     WebApps/ARServer/src/config/AppConfig.cpp
+    WebApps/ARServer/src/catalog/ExhibitionCatalog.cpp
     WebApps/ARServer/src/catalog/SceneCatalog.cpp
     WebApps/ARServer/src/utils/JsonUtil.cpp
     WebApps/ARServer/src/utils/ApiError.cpp
+    WebApps/ARServer/src/utils/ApiResponse.cpp
     WebApps/ARServer/src/handlers/AuthHandler.cpp
     WebApps/ARServer/src/handlers/PresenceHandlers.cpp
     WebApps/ARServer/src/handlers/SceneHandlers.cpp
@@ -258,7 +278,8 @@ add_executable(ar_server
     WebApps/ARServer/src/services/SessionService.cpp
     WebApps/ARServer/src/services/SceneInteractionService.cpp
     WebApps/ARServer/src/services/DaoSessionStore.cpp)
-target_include_directories(ar_server PRIVATE ${CMAKE_SOURCE_DIR}/WebApps/ARServer/include)
+target_include_directories(ar_server PRIVATE ${CMAKE_SOURCE_DIR}/WebApps/ARServer/include
+                                             ${CMAKE_SOURCE_DIR}/third_party)
 target_link_libraries(ar_server src_lib memory_lib ${LIBS})
 if(TARGET ar_data)
     target_link_libraries(ar_server ar_data)

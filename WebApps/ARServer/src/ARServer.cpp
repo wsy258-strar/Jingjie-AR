@@ -17,7 +17,8 @@
 namespace ar {
 
 ARServer::ARServer(EventLoop* loop, const InetAddress& address, AuthHandler* auth, SessionHandlers* sessions,
-                   PresenceHandlers* presence, SceneInteractionHandlers* interactions, StaticFileHandler* files)
+                   PresenceHandlers* presence, SceneHandlers* scenes,
+                   SceneInteractionHandlers* interactions, StaticFileHandler* files)
     : server_(loop, address, "ARServer")
 {
     CorsConfig cors;
@@ -66,13 +67,15 @@ ARServer::ARServer(EventLoop* loop, const InetAddress& address, AuthHandler* aut
             sessions->exit(request, responder);
         });
     }
-    server_.Get("/api/scenes", SceneHandlers::list);
+    server_.Get("/api/scenes", [scenes](const HttpRequest& request, HttpResponse* response) {
+        scenes->list(request, response);
+    });
+    server_.Get("/api/scenes/:sceneId",
+                [scenes](const HttpRequest& request, HttpResponse* response) {
+        scenes->get(request, response);
+    });
     if (interactions)
     {
-        server_.GetAsync("/api/scenes/:sceneId", [interactions](const HttpRequest& request,
-                                                                 const AsyncResponder& responder) {
-            interactions->detail(request, responder);
-        });
         server_.GetAsync("/api/scenes/:sceneId/comments", [interactions](const HttpRequest& request,
                                                                            const AsyncResponder& responder) {
             interactions->comments(request, responder);
@@ -90,7 +93,6 @@ ARServer::ARServer(EventLoop* loop, const InetAddress& address, AuthHandler* aut
             interactions->comment(request, responder);
         });
     }
-    else server_.Get("/api/scenes/:sceneId", SceneHandlers::get);
     server_.Post("/api/scenes/:sceneId/interactions", SceneHandlers::interactions);
     server_.setAsyncFallback([files](const HttpRequest& request, const AsyncResponder& responder) {
         if (files && (request.method() == HttpRequest::kGet || request.method() == HttpRequest::kHead))

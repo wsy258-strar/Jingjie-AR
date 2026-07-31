@@ -5,10 +5,16 @@
 #include <http/HttpResponse.h>
 
 namespace ar {
+class ExhibitionCatalog;
+
 class SceneHandlers {
 public:
-    static void list(const HttpRequest&, HttpResponse* response);
-    static void get(const HttpRequest& request, HttpResponse* response);
+    explicit SceneHandlers(const ExhibitionCatalog* catalog);
+    void list(const HttpRequest& request, HttpResponse* response) const;
+    void get(const HttpRequest& request, HttpResponse* response) const;
     static void interactions(const HttpRequest&, HttpResponse* response);
+
+private:
+    const ExhibitionCatalog* catalog_;
 };
 }
