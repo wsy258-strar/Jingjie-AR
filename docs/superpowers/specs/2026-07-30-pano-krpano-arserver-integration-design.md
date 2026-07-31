@@ -165,7 +165,7 @@ WebApps/ARServer/config/exhibition.json
   },
   "artworks": [
     {
-      "artworkId": "s_76196995_2",
+      "artworkId": "s_76196995_1",
       "title": "《启航》",
       "images": ["/assets/illustration/qihang.jpg"]
     }
