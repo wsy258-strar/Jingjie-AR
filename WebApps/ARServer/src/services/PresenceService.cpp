@@ -1,4 +1,4 @@
-// Redis 在线状态实现：心跳覆盖 TTL，成员列表读取反映当前有效心跳集合。
+// Redis 在线状态实现：展馆内所有匿名访客共享一个按最近心跳排序的集合。
 #include <services/PresenceService.h>
 
 #include <cache/RedisConnectionPool.h>
@@ -11,72 +11,117 @@
 #include <cstdlib>
 
 namespace ar {
+namespace {
+
+const char* const kPresenceKey = "presence:exhibition";
+const int64_t kOnlineWindowMs = 60000;
+
+} // namespace
+
+bool PresenceService::heartbeat(const std::string& token, int64_t nowMs)
+{
+    return store_ && !token.empty() && nowMs >= 0 && store_->touch(token, nowMs);
+}
+
+bool PresenceService::remove(const std::string& token)
+{
+    return store_ && !token.empty() && store_->remove(token);
+}
+
+bool PresenceService::count(int64_t nowMs, uint64_t* value)
+{
+    if (!value) return false;
+    *value = 0;
+    return store_ && nowMs >= 0 && store_->count(nowMs - kOnlineWindowMs, value);
+}
 
 bool PresenceService::heartbeat(const std::string& sceneId, const std::string& token, int64_t nowMs)
 {
-    return store_ && !sceneId.empty() && !token.empty() && store_->touch(sceneId, token, nowMs);
+    return !sceneId.empty() && heartbeat(token, nowMs);
 }
 
 bool PresenceService::remove(const std::string& sceneId, const std::string& token)
 {
-    return store_ && !sceneId.empty() && !token.empty() && store_->remove(sceneId, token);
+    return !sceneId.empty() && remove(token);
 }
 
-bool PresenceService::list(const std::string& sceneId, int64_t nowMs, std::vector<PresenceEntry>* entries)
+bool PresenceService::list(const std::string& sceneId, int64_t nowMs,
+                           std::vector<PresenceEntry>* entries)
 {
     if (!entries) return false;
     entries->clear();
-    if (!store_ || sceneId.empty() || !store_->active(sceneId, nowMs - 30000, entries)) return false;
-    const int64_t cutoff = nowMs - 30000;
-    for (std::vector<PresenceEntry>::iterator it = entries->begin(); it != entries->end(); )
-    {
-        if (it->lastSeenMs <= cutoff) it = entries->erase(it);
-        else ++it;
-    }
-    return true;
+    return store_ && !sceneId.empty() &&
+           store_->active(sceneId, nowMs - kOnlineWindowMs, entries);
 }
 
-std::string RedisPresenceStore::key(const std::string& sceneId)
+bool RedisPresenceStore::touch(const std::string& token, int64_t nowMs)
 {
-    return "scene:" + sceneId + ":presence";
+#ifdef HAS_REDIS
+    if (!pool_ || token.empty()) return false;
+    std::shared_ptr<redisContext> connection = pool_->borrow();
+    if (!connection) return false;
+    redisReply* reply = static_cast<redisReply*>(redisCommand(connection.get(), "ZADD %s %lld %s",
+        kPresenceKey, static_cast<long long>(nowMs), token.c_str()));
+    if (!reply) return false;
+    const bool ok = reply->type == REDIS_REPLY_INTEGER;
+    freeReplyObject(reply);
+    return ok;
+#else
+    (void)token; (void)nowMs;
+    return false;
+#endif
+}
+
+bool RedisPresenceStore::remove(const std::string& token)
+{
+#ifdef HAS_REDIS
+    if (!pool_ || token.empty()) return false;
+    std::shared_ptr<redisContext> connection = pool_->borrow();
+    if (!connection) return false;
+    redisReply* reply = static_cast<redisReply*>(redisCommand(connection.get(), "ZREM %s %s",
+        kPresenceKey, token.c_str()));
+    if (!reply) return false;
+    const bool ok = reply->type == REDIS_REPLY_INTEGER;
+    freeReplyObject(reply);
+    return ok;
+#else
+    (void)token;
+    return false;
+#endif
+}
+
+bool RedisPresenceStore::count(int64_t cutoffMs, uint64_t* value)
+{
+#ifdef HAS_REDIS
+    if (!pool_ || !value) return false;
+    *value = 0;
+    std::shared_ptr<redisContext> connection = pool_->borrow();
+    if (!connection) return false;
+    static const char script[] =
+        "redis.call('ZREMRANGEBYSCORE',KEYS[1],'-inf',ARGV[1]);"
+        "return redis.call('ZCARD',KEYS[1])";
+    redisReply* reply = static_cast<redisReply*>(redisCommand(
+        connection.get(), "EVAL %s 1 %s %lld", script, kPresenceKey,
+        static_cast<long long>(cutoffMs)));
+    if (!reply) return false;
+    const bool ok = reply->type == REDIS_REPLY_INTEGER && reply->integer >= 0;
+    if (ok) *value = static_cast<uint64_t>(reply->integer);
+    freeReplyObject(reply);
+    return ok;
+#else
+    (void)cutoffMs; (void)value;
+    return false;
+#endif
 }
 
 bool RedisPresenceStore::touch(const std::string& sceneId, const std::string& token, int64_t nowMs)
 {
-#ifdef HAS_REDIS
-    if (!pool_ || sceneId.empty() || token.empty()) return false;
-    std::shared_ptr<redisContext> connection = pool_->borrow();
-    if (!connection) return false;
-    const std::string redisKey = key(sceneId);
-    redisReply* reply = static_cast<redisReply*>(redisCommand(connection.get(), "ZADD %s %lld %s",
-        redisKey.c_str(), static_cast<long long>(nowMs), token.c_str()));
-    if (!reply) return false;
-    const bool ok = reply->type == REDIS_REPLY_INTEGER;
-    freeReplyObject(reply);
-    return ok;
-#else
-    (void)sceneId; (void)token; (void)nowMs;
-    return false;
-#endif
+    return !sceneId.empty() && touch(token, nowMs);
 }
 
 bool RedisPresenceStore::remove(const std::string& sceneId, const std::string& token)
 {
-#ifdef HAS_REDIS
-    if (!pool_ || sceneId.empty() || token.empty()) return false;
-    std::shared_ptr<redisContext> connection = pool_->borrow();
-    if (!connection) return false;
-    const std::string redisKey = key(sceneId);
-    redisReply* reply = static_cast<redisReply*>(redisCommand(connection.get(), "ZREM %s %s",
-        redisKey.c_str(), token.c_str()));
-    if (!reply) return false;
-    const bool ok = reply->type == REDIS_REPLY_INTEGER;
-    freeReplyObject(reply);
-    return ok;
-#else
-    (void)sceneId; (void)token;
-    return false;
-#endif
+    return !sceneId.empty() && remove(token);
 }
 
 bool RedisPresenceStore::active(const std::string& sceneId, int64_t cutoffMs,
@@ -87,15 +132,14 @@ bool RedisPresenceStore::active(const std::string& sceneId, int64_t cutoffMs,
     entries->clear();
     std::shared_ptr<redisContext> connection = pool_->borrow();
     if (!connection) return false;
-    const std::string redisKey = key(sceneId);
     redisReply* trim = static_cast<redisReply*>(redisCommand(connection.get(),
-        "ZREMRANGEBYSCORE %s -inf %lld", redisKey.c_str(), static_cast<long long>(cutoffMs)));
+        "ZREMRANGEBYSCORE %s -inf %lld", kPresenceKey, static_cast<long long>(cutoffMs)));
     if (!trim) return false;
     const bool trimmed = trim->type == REDIS_REPLY_INTEGER;
     freeReplyObject(trim);
     if (!trimmed) return false;
     redisReply* reply = static_cast<redisReply*>(redisCommand(connection.get(),
-        "ZRANGEBYSCORE %s %lld +inf WITHSCORES", redisKey.c_str(), static_cast<long long>(cutoffMs)));
+        "ZRANGEBYSCORE %s %lld +inf WITHSCORES", kPresenceKey, static_cast<long long>(cutoffMs)));
     if (!reply) return false;
     const bool valid = reply->type == REDIS_REPLY_ARRAY && reply->elements % 2 == 0;
     if (valid)

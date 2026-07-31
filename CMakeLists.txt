@@ -218,6 +218,16 @@ if(TARGET http_framework_redis)
 endif()
 add_test(NAME presence_service_test COMMAND presence_service_test)
 
+add_executable(visitor_session_service_test tests/unit/visitor_session_service_test.cpp
+    WebApps/ARServer/src/services/VisitorSessionService.cpp)
+target_include_directories(visitor_session_service_test PRIVATE ${CMAKE_SOURCE_DIR}/tests
+    ${CMAKE_SOURCE_DIR}/WebApps/ARServer/include)
+target_link_libraries(visitor_session_service_test src_lib memory_lib ${LIBS})
+if(TARGET http_framework_redis)
+    target_link_libraries(visitor_session_service_test http_framework_redis)
+endif()
+add_test(NAME visitor_session_service_test COMMAND visitor_session_service_test)
+
 add_executable(presence_handlers_test tests/unit/presence_handlers_test.cpp)
 target_include_directories(presence_handlers_test PRIVATE ${CMAKE_SOURCE_DIR}/tests
     ${CMAKE_SOURCE_DIR}/WebApps/ARServer/include)
@@ -235,7 +245,8 @@ add_test(NAME presence_handlers_test COMMAND presence_handlers_test)
 
 if(HIREDIS_LIB)
     add_executable(presence_redis_integration_test tests/integration/presence_redis_integration.cpp
-                   WebApps/ARServer/src/services/PresenceService.cpp)
+                   WebApps/ARServer/src/services/PresenceService.cpp
+                   WebApps/ARServer/src/services/VisitorSessionService.cpp)
     target_include_directories(presence_redis_integration_test PRIVATE ${CMAKE_SOURCE_DIR}/tests
         ${CMAKE_SOURCE_DIR}/WebApps/ARServer/include)
     target_link_libraries(presence_redis_integration_test http_framework_redis memory_lib ${LIBS})
@@ -281,6 +292,7 @@ add_executable(ar_server
     WebApps/ARServer/src/services/ArtworkInteractionService.cpp
     WebApps/ARServer/src/services/CachedSessionStore.cpp
     WebApps/ARServer/src/services/PresenceService.cpp
+    WebApps/ARServer/src/services/VisitorSessionService.cpp
     WebApps/ARServer/src/services/DaoAuthStore.cpp
     WebApps/ARServer/src/services/SessionService.cpp
     WebApps/ARServer/src/services/SceneInteractionService.cpp
