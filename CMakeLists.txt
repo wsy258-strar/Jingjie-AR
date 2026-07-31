@@ -271,6 +271,7 @@ add_test(NAME request_middleware_test COMMAND request_middleware_test)
 endif()
 
 if(MYSQL_LIB)
+    target_sources(ar_data PRIVATE ${CMAKE_SOURCE_DIR}/src/db/ExhibitionStatisticsDAO.cpp)
 add_executable(ar_server
     WebApps/ARServer/src/main.cpp
     WebApps/ARServer/src/ARServer.cpp
@@ -286,6 +287,7 @@ add_executable(ar_server
     WebApps/ARServer/src/handlers/SceneHandlers.cpp
     WebApps/ARServer/src/handlers/SceneInteractionHandlers.cpp
     WebApps/ARServer/src/handlers/SessionHandlers.cpp
+    WebApps/ARServer/src/handlers/VisitorHandlers.cpp
     WebApps/ARServer/src/middleware/AuthMiddleware.cpp
     WebApps/ARServer/src/services/AuthService.cpp
     WebApps/ARServer/src/services/ArSessionValidator.cpp
@@ -375,6 +377,32 @@ add_executable(artwork_interaction_dao_test
 target_include_directories(artwork_interaction_dao_test PRIVATE ${CMAKE_SOURCE_DIR}/tests)
 target_link_libraries(artwork_interaction_dao_test src_lib ar_data memory_lib ${LIBS})
 add_test(NAME artwork_interaction_dao_test COMMAND artwork_interaction_dao_test)
+
+add_executable(exhibition_statistics_dao_test
+    tests/unit/exhibition_statistics_dao_test.cpp)
+target_include_directories(exhibition_statistics_dao_test PRIVATE ${CMAKE_SOURCE_DIR}/tests)
+target_link_libraries(exhibition_statistics_dao_test
+    src_lib ar_data memory_lib ${LIBS})
+add_test(NAME exhibition_statistics_dao_test COMMAND exhibition_statistics_dao_test)
+
+add_executable(visitor_handlers_test
+    tests/unit/visitor_handlers_test.cpp
+    WebApps/ARServer/src/handlers/VisitorHandlers.cpp
+    WebApps/ARServer/src/services/PresenceService.cpp
+    WebApps/ARServer/src/services/VisitorSessionService.cpp
+    WebApps/ARServer/src/utils/ApiError.cpp
+    WebApps/ARServer/src/utils/ApiResponse.cpp
+    WebApps/ARServer/src/utils/JsonUtil.cpp)
+target_include_directories(visitor_handlers_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/tests
+    ${CMAKE_SOURCE_DIR}/WebApps/ARServer/include
+    ${CMAKE_SOURCE_DIR}/third_party)
+target_link_libraries(visitor_handlers_test
+    src_lib ar_data memory_lib ${LIBS})
+if(TARGET http_framework_redis)
+    target_link_libraries(visitor_handlers_test http_framework_redis)
+endif()
+add_test(NAME visitor_handlers_test COMMAND visitor_handlers_test)
 
 add_executable(artwork_interaction_mysql_integration_test
     tests/integration/artwork_interaction_mysql_integration.cpp)
