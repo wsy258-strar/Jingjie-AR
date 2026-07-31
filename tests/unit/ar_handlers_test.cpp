@@ -188,6 +188,8 @@ int main()
     nlohmann::json scenesJson = nlohmann::json::parse(scenesResponse.body());
     CHECK(scenesJson["success"].get<bool>());
     CHECK(scenesJson["message"].get<std::string>().empty());
+    CHECK(scenesJson["data"]["title"].get<std::string>() == catalog->title());
+    CHECK(scenesJson["data"]["remark"].get<std::string>() == catalog->remark());
     CHECK(scenesJson["data"]["defaultSceneId"].get<std::string>() == "76196992");
     CHECK(scenesJson["data"]["scenes"].size() == 9);
     CHECK(scenesJson["data"]["scenes"][0]["sceneId"].get<std::string>() == "76196992");

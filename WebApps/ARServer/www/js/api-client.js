@@ -69,7 +69,8 @@ export class ApiClient {
         const envelope = parsed.value && typeof parsed.value === "object" ? parsed.value : null;
         const failed = !response.ok || (envelope && envelope.success === false);
         if (failed) {
-          if (response.status === 401 && this.storage) this.storage.removeItem(USER_TOKEN_KEY);
+          if (response.status === 401 && user && this.storage)
+            this.storage.removeItem(USER_TOKEN_KEY);
           const message = envelope && envelope.message ? envelope.message :
             (parsed.text || "HTTP " + response.status);
           throw new ApiError(response.status,

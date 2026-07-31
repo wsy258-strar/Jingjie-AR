@@ -1,68 +1,125 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="zh-CN">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>境界AR · 360° 全景探索</title>
-    <link rel="stylesheet" href="/css/style.css">
-    <link rel="stylesheet" href="/css/panorama-loading.css">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#171510">
+  <title>数字展馆</title>
+  <link rel="stylesheet" href="/css/museum.css">
+  <script defer src="/assets/krp/runtime/player_krp_v2.js"></script>
 </head>
 <body>
-    <header class="site-header">
-        <a class="brand" href="/" aria-label="境界AR首页">境界AR · 360° 全景探索</a>
-        <button id="auth-open" class="header-auth" type="button">注册 / 登录</button>
+  <a class="skip-link" href="#panorama">跳到全景展厅</a>
+  <div class="museum-shell">
+    <header class="topbar">
+      <div class="identity">
+        <p class="identity-kicker">DIGITAL MUSEUM</p>
+        <h1 id="museum-title">正在载入展馆</h1>
+      </div>
+      <div class="topbar-actions">
+        <button id="description-open" class="plain-button" type="button" aria-haspopup="dialog">展馆简介</button>
+        <button id="login-open" class="accent-button" type="button" aria-haspopup="dialog">注册 / 登录</button>
+      </div>
     </header>
-    <main class="portal">
-        <section class="hero">
-            <p class="eyebrow">JINGJIE AR</p>
-            <h1>在每一次转身里，抵达另一个世界</h1>
-            <p>八个可自由浏览的 360° 全景场景。登录后可点赞、评论，并与其他探索者同场在线。</p>
-        </section>
-        <section aria-labelledby="scene-heading">
-            <div class="section-heading"><h2 id="scene-heading">全景场景</h2><span id="scene-total">加载中</span></div>
-            <div id="scene-grid" class="scene-grid" aria-live="polite"></div>
-        </section>
-    </main>
 
-    <div id="auth-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="auth-title">
-        <div class="modal-panel">
-            <button id="auth-close" class="icon-button modal-close" type="button" aria-label="关闭">×</button>
-            <p class="eyebrow">WELCOME</p><h2 id="auth-title">登录境界AR</h2>
-            <p class="muted">新用户名会自动注册并创建会话。</p>
-            <label>用户名<input id="auth-username" maxlength="64" autocomplete="username"></label>
-            <label>密码<input id="auth-password" type="password" maxlength="64" autocomplete="current-password"></label>
-            <button id="auth-submit" class="primary-button" type="button">注册 / 登录</button>
-            <p id="auth-message" class="form-message" role="status"></p>
+    <main class="museum-main">
+      <section class="viewer-panel" aria-labelledby="scene-title">
+        <div id="panorama" class="panorama" tabindex="0" aria-label="360 度全景展厅"></div>
+        <div class="viewer-shade" aria-hidden="true"></div>
+        <div id="scene-loading" class="loading-pill" role="status">正在进入展厅…</div>
+        <div class="viewer-heading">
+          <p>360° PANORAMA</p>
+          <h2 id="scene-title">请选择场景</h2>
         </div>
-    </div>
-
-    <section id="viewer" class="viewer hidden" aria-label="全景浏览器">
-        <div id="aframe-host" class="aframe-host"></div>
-        <div class="viewer-gradient"></div>
-        <div id="panorama-loading" class="panorama-loading hidden" role="status">高清加载中</div>
-        <div class="viewer-title"><p id="viewer-kicker" class="eyebrow">360° PANORAMA</p><h2 id="viewer-name"></h2></div>
-        <div class="online-pill">在线 <strong id="online-count">0</strong></div>
-        <div class="viewer-controls top-controls">
-            <button id="fullscreen-button" type="button">全屏</button>
-            <button id="music-button" type="button">音乐未配置</button>
+        <div class="viewer-tools" aria-label="全景工具">
+          <button id="music-toggle" type="button" disabled>暂无音乐</button>
+          <button id="fullscreen-toggle" type="button">全屏浏览</button>
         </div>
-        <div class="viewer-controls interaction-controls">
-            <button id="like-button" type="button">♡ <span id="like-count">0</span></button>
-            <button id="comments-button" type="button">评论</button>
-        </div>
-        <button id="exit-button" class="exit-button" type="button">← 退出场景</button>
-        <div id="toast" class="toast hidden" role="status"></div>
         <audio id="scene-audio" preload="none"></audio>
-    </section>
+      </section>
 
-    <section id="comments-drawer" class="comments-drawer hidden" aria-label="评论">
-        <div class="drawer-header"><h2>评论</h2><button id="comments-close" class="icon-button" type="button" aria-label="关闭评论">×</button></div>
-        <div id="comment-list" class="comment-list"></div>
-        <button id="comments-more" class="comments-more hidden" type="button">加载更多评论</button>
-        <div class="comment-compose"><input id="comment-input" maxlength="300" placeholder="说点什么…"><button id="comment-submit" type="button">发布</button></div>
-    </section>
+      <aside class="catalog-panel" aria-labelledby="catalog-title">
+        <div class="statistics" aria-label="展馆统计">
+          <div><span id="total-views">—</span><small>总浏览量</small></div>
+          <div><span id="online-count">—</span><small>当前在线</small></div>
+        </div>
+        <div class="catalog-heading">
+          <div><p>EXHIBITION MAP</p><h2 id="catalog-title">展馆目录</h2></div>
+          <span id="scene-count" aria-live="polite"></span>
+        </div>
+        <nav id="scene-catalog" class="scene-catalog" aria-label="场景目录"></nav>
+      </aside>
+    </main>
+  </div>
 
-    <script src="/vendor/aframe-1.6.0.min.js"></script>
-    <script src="/js/app.js"></script>
+  <section id="description-modal" class="modal" role="dialog" aria-modal="true"
+    aria-labelledby="description-title" aria-hidden="true">
+    <div class="modal-backdrop" data-close="description"></div>
+    <div class="modal-card description-card" tabindex="-1">
+      <button class="modal-close" type="button" data-close="description" aria-label="关闭展馆简介">×</button>
+      <p class="modal-kicker">ABOUT THE EXHIBITION</p>
+      <h2 id="description-title">展馆简介</h2>
+      <div id="museum-description" class="description-copy"></div>
+    </div>
+  </section>
+
+  <section id="artwork-modal" class="modal" role="dialog" aria-modal="true"
+    aria-labelledby="artwork-title" aria-hidden="true">
+    <div class="modal-backdrop" data-artwork-close></div>
+    <div class="modal-card artwork-card" tabindex="-1">
+      <button class="modal-close" type="button" data-artwork-close aria-label="关闭作品详情">×</button>
+      <div class="artwork-content">
+        <p class="modal-kicker">COLLECTION</p>
+        <h2 id="artwork-title">作品详情</h2>
+        <div id="artwork-gallery" class="artwork-gallery" aria-label="作品图片"></div>
+        <div id="artwork-text" class="artwork-text"></div>
+      </div>
+      <aside id="artwork-interactions" class="artwork-interactions">
+        <button id="artwork-like" class="like-button" type="button">
+          <span id="artwork-like-symbol" aria-hidden="true">♡</span>
+          <span id="artwork-like-label">点赞</span>
+          <span id="artwork-like-count">0</span>
+        </button>
+        <section aria-labelledby="comments-title">
+          <h3 id="comments-title">观众评论</h3>
+          <div id="comment-list" class="comment-list" aria-live="polite"></div>
+          <button id="comments-more" class="text-button" type="button" hidden>加载更多</button>
+          <form id="comment-form" class="comment-form">
+            <label for="comment-input">写下你的评论</label>
+            <textarea id="comment-input" maxlength="1000" rows="3" placeholder="点赞或评论前需要登录"></textarea>
+            <button class="accent-button" type="submit">发布评论</button>
+          </form>
+        </section>
+      </aside>
+    </div>
+  </section>
+
+  <section id="login-modal" class="modal" role="dialog" aria-modal="true"
+    aria-labelledby="login-title" aria-hidden="true">
+    <div class="modal-backdrop" data-login-close></div>
+    <div class="modal-card login-card" tabindex="-1">
+      <button class="modal-close" type="button" data-login-close aria-label="关闭登录窗口">×</button>
+      <p class="modal-kicker">MEMBER</p>
+      <h2 id="login-title">注册或登录</h2>
+      <p class="form-hint">首次使用的用户名会自动注册。登录后可为作品点赞和评论。</p>
+      <form id="login-form">
+        <label for="login-username">用户名</label>
+        <input id="login-username" name="username" maxlength="64" autocomplete="username" required>
+        <label for="login-password">密码</label>
+        <input id="login-password" name="password" type="password" maxlength="64"
+          autocomplete="current-password" required>
+        <button id="login-submit" class="accent-button" type="submit">继续</button>
+      </form>
+      <p id="login-message" class="form-message" role="status"></p>
+    </div>
+  </section>
+
+  <div id="notice" class="notice" role="status" aria-live="polite" aria-atomic="true" hidden></div>
+  <div id="fatal-error" class="fatal-error" role="alert" hidden>
+    <p>展馆目录暂时无法加载，请检查网络后重试。</p>
+    <button id="retry-bootstrap" class="accent-button" type="button">重新加载</button>
+  </div>
+
+  <script type="module" src="/js/museum-app.js"></script>
 </body>
 </html>

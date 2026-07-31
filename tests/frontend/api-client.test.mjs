@@ -87,6 +87,21 @@ test("401 仅清除用户令牌并能处理空的非 JSON 响应", async () => {
   assert.equal(storage.getItem("ar.userToken"), null);
 });
 
+test("匿名访客请求的 401 不得清除独立的用户令牌", async () => {
+  const storage = storageWith({ "ar.visitorToken": "visitor-1", "ar.userToken": "user-1" });
+  const client = new ApiClient({
+    storage,
+    fetchImpl: async () => response(401,
+      '{"success":false,"code":"VISITOR_TOKEN_INVALID","message":"expired"}')
+  });
+
+  await assert.rejects(client.request("/api/presence/heartbeat", {
+    method: "POST", visitor: true
+  }), ApiError);
+  assert.equal(storage.getItem("ar.visitorToken"), "visitor-1");
+  assert.equal(storage.getItem("ar.userToken"), "user-1");
+});
+
 test("空成功响应返回 null 而不是 JSON 解析错误", async () => {
   const client = new ApiClient({
     storage: storageWith(),

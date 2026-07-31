@@ -130,7 +130,11 @@ void SceneHandlers::list(const HttpRequest& request, HttpResponse* response) con
         return;
     }
     std::ostringstream output;
-    output << "{\"defaultSceneId\":";
+    output << "{\"title\":";
+    writeString(&output, catalog_->title());
+    output << ",\"remark\":";
+    writeString(&output, catalog_->remark());
+    output << ",\"defaultSceneId\":";
     writeString(&output, catalog_->defaultSceneId());
     output << ",\"scenes\":[";
     const std::vector<ExhibitionScene>& scenes = catalog_->scenes();
