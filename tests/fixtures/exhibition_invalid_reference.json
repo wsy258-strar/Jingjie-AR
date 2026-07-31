@@ -20,6 +20,12 @@
         "https://example.com/not-local.jpg",
         "/assets/pano/15949056"
       ]
+    },
+    {
+      "artworkId": "artwork-id-that-is-deliberately-longer-than-sixty-four-bytes-for-schema-validation",
+      "title": "too long",
+      "text": "too long",
+      "images": ["/assets/illustration/qihang.jpg"]
     }
   ],
   "scenes": [

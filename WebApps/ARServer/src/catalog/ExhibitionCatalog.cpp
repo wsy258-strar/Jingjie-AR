@@ -241,7 +241,11 @@ void readArtwork(const Json& value, size_t index, const std::string& staticRoot,
         return;
     }
     if (readString(value, "artworkId", context, &artwork->id, errors))
+    {
+        if (artwork->id.size() > 64)
+            addError(errors, context, "artworkId exceeds 64 bytes");
         addUniqueId(artwork->id, "artwork", artworkIds, context, errors);
+    }
     readString(value, "title", context, &artwork->title, errors);
     readString(value, "text", context, &artwork->text, errors, true);
 

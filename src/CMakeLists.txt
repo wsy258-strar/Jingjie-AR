@@ -47,7 +47,8 @@ if(MYSQL_LIB)
         ${CMAKE_CURRENT_SOURCE_DIR}/db/DBWorkerPool.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/db/MySQLConnectionPool.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/db/SessionDAO.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/db/SceneInteractionDAO.cpp)
+        ${CMAKE_CURRENT_SOURCE_DIR}/db/SceneInteractionDAO.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/db/ArtworkInteractionDAO.cpp)
     if(HIREDIS_LIB)
         list(APPEND AR_DATA_SRC
             ${CMAKE_CURRENT_SOURCE_DIR}/cache/SessionCache.cpp

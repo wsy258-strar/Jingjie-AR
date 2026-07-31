@@ -96,6 +96,7 @@ int main()
     CHECK(invalid.get() == 0);
     CHECK(!containsError(errors, "stale"));
     CHECK(containsError(errors, "duplicate artwork id"));
+    CHECK(containsError(errors, "artworkId exceeds 64 bytes"));
     CHECK(containsError(errors, "duplicate scene id"));
     CHECK(containsError(errors, "duplicate hotspot id"));
     CHECK(containsError(errors, "unknown default scene"));

@@ -177,6 +177,11 @@ add_test(NAME ar_server_scene_wiring_static_test
 set_tests_properties(ar_server_scene_wiring_static_test
     PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 
+add_test(NAME jingjie_ar_schema_static_test
+    COMMAND bash ${CMAKE_SOURCE_DIR}/tests/integration/jingjie_ar_schema_static_test.sh)
+set_tests_properties(jingjie_ar_schema_static_test
+    PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+
 add_executable(scene_catalog_test tests/unit/scene_catalog_test.cpp
     WebApps/ARServer/src/catalog/SceneCatalog.cpp)
 target_include_directories(scene_catalog_test PRIVATE ${CMAKE_SOURCE_DIR}/tests
@@ -265,6 +270,7 @@ add_executable(ar_server
     WebApps/ARServer/src/utils/ApiError.cpp
     WebApps/ARServer/src/utils/ApiResponse.cpp
     WebApps/ARServer/src/handlers/AuthHandler.cpp
+    WebApps/ARServer/src/handlers/ArtworkInteractionHandlers.cpp
     WebApps/ARServer/src/handlers/PresenceHandlers.cpp
     WebApps/ARServer/src/handlers/SceneHandlers.cpp
     WebApps/ARServer/src/handlers/SceneInteractionHandlers.cpp
@@ -272,6 +278,7 @@ add_executable(ar_server
     WebApps/ARServer/src/middleware/AuthMiddleware.cpp
     WebApps/ARServer/src/services/AuthService.cpp
     WebApps/ARServer/src/services/ArSessionValidator.cpp
+    WebApps/ARServer/src/services/ArtworkInteractionService.cpp
     WebApps/ARServer/src/services/CachedSessionStore.cpp
     WebApps/ARServer/src/services/PresenceService.cpp
     WebApps/ARServer/src/services/DaoAuthStore.cpp
@@ -350,6 +357,64 @@ if(TARGET ar_data)
     target_link_libraries(scene_interaction_service_test ar_data)
 endif()
 add_test(NAME scene_interaction_service_test COMMAND scene_interaction_service_test)
+
+add_executable(artwork_interaction_dao_test
+    tests/unit/artwork_interaction_dao_test.cpp)
+target_include_directories(artwork_interaction_dao_test PRIVATE ${CMAKE_SOURCE_DIR}/tests)
+target_link_libraries(artwork_interaction_dao_test src_lib ar_data memory_lib ${LIBS})
+add_test(NAME artwork_interaction_dao_test COMMAND artwork_interaction_dao_test)
+
+add_executable(artwork_interaction_mysql_integration_test
+    tests/integration/artwork_interaction_mysql_integration.cpp)
+target_include_directories(artwork_interaction_mysql_integration_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/tests)
+target_link_libraries(artwork_interaction_mysql_integration_test
+    src_lib ar_data memory_lib ${LIBS})
+add_test(NAME artwork_interaction_mysql_integration
+    COMMAND bash
+        ${CMAKE_SOURCE_DIR}/tests/integration/artwork_interaction_mysql_integration.sh
+        $<TARGET_FILE:artwork_interaction_mysql_integration_test>)
+set_tests_properties(artwork_interaction_mysql_integration PROPERTIES
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    SKIP_RETURN_CODE 77)
+
+add_executable(artwork_interaction_service_test
+    tests/unit/artwork_interaction_service_test.cpp
+    WebApps/ARServer/src/catalog/ExhibitionCatalog.cpp
+    WebApps/ARServer/src/services/SessionService.cpp
+    WebApps/ARServer/src/services/ArtworkInteractionService.cpp)
+target_include_directories(artwork_interaction_service_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/tests
+    ${CMAKE_SOURCE_DIR}/WebApps/ARServer/include
+    ${CMAKE_SOURCE_DIR}/third_party)
+target_link_libraries(artwork_interaction_service_test src_lib memory_lib ${LIBS})
+if(TARGET ar_data)
+    target_link_libraries(artwork_interaction_service_test ar_data)
+endif()
+add_test(NAME artwork_interaction_service_test COMMAND artwork_interaction_service_test)
+set_tests_properties(artwork_interaction_service_test PROPERTIES
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+
+add_executable(artwork_interaction_handlers_test
+    tests/unit/artwork_interaction_handlers_test.cpp
+    WebApps/ARServer/src/catalog/ExhibitionCatalog.cpp
+    WebApps/ARServer/src/handlers/ArtworkInteractionHandlers.cpp
+    WebApps/ARServer/src/services/ArtworkInteractionService.cpp
+    WebApps/ARServer/src/services/SessionService.cpp
+    WebApps/ARServer/src/utils/ApiError.cpp
+    WebApps/ARServer/src/utils/ApiResponse.cpp
+    WebApps/ARServer/src/utils/JsonUtil.cpp)
+target_include_directories(artwork_interaction_handlers_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/tests
+    ${CMAKE_SOURCE_DIR}/WebApps/ARServer/include
+    ${CMAKE_SOURCE_DIR}/third_party)
+target_link_libraries(artwork_interaction_handlers_test src_lib memory_lib ${LIBS})
+if(TARGET ar_data)
+    target_link_libraries(artwork_interaction_handlers_test ar_data)
+endif()
+add_test(NAME artwork_interaction_handlers_test COMMAND artwork_interaction_handlers_test)
+set_tests_properties(artwork_interaction_handlers_test PROPERTIES
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 endif()
 
 if(BUILD_PROJECT_TESTS AND MYSQL_LIB AND HIREDIS_LIB)
