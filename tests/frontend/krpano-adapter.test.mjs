@@ -24,7 +24,7 @@ try {
 }
 process.once("exit", () => rmSync(loaded.target, { recursive: true, force: true }));
 
-const { KrpanoAdapter, buildSceneXml, xmlEscape } = loaded.module;
+const { KrpanoAdapter, VIEW_MODES, buildSceneXml, xmlEscape } = loaded.module;
 
 const scene = {
   sceneId: "76196992",
@@ -204,6 +204,100 @@ test("loadxml 抛错时保留旧场景热点映射与已加载状态", async () 
     assert.equal(adapter.currentHotspots[0].hotspotId, "scene-hotspot");
     globalThis.JingjieARHotspotBridge(0);
     assert.deepEqual(selected, ["scene-hotspot"]);
+  } finally {
+    if (previousEmbedpano === undefined) delete globalThis.embedpano;
+    else globalThis.embedpano = previousEmbedpano;
+  }
+});
+
+test("导出四种稳定的语义视角模式", () => {
+  assert.deepEqual(VIEW_MODES, {
+    NORMAL: "normal",
+    PLANET: "planet",
+    FISHEYE: "fisheye",
+    CRYSTAL: "crystal"
+  });
+});
+
+test("四种视角模式映射为独立的 krpano 投影动作", async () => {
+  const previousEmbedpano = globalThis.embedpano;
+  const calls = [];
+  const values = {
+    "view.hlookat": "18",
+    "view.vlookat": "-4",
+    "view.fov": "72",
+    "webvr.isavailable": true
+  };
+  const player = {
+    get(key) { return values[key]; },
+    call(command) { calls.push(command); }
+  };
+  globalThis.embedpano = (options) => options.onready(player);
+
+  try {
+    const adapter = new KrpanoAdapter({ targetId: "panorama" });
+    await adapter.initialize();
+    assert.equal(adapter.setViewMode("planet"), "planet");
+    assert.match(calls.at(-1), /stereographic,true/);
+    assert.match(calls.at(-1), /vlookat,90/);
+    assert.equal(adapter.setViewMode("fisheye"), "fisheye");
+    assert.match(calls.at(-1), /fisheye,1\.0/);
+    assert.equal(adapter.setViewMode("crystal"), "crystal");
+    assert.match(calls.at(-1), /stereographic,true/);
+    assert.match(calls.at(-1), /vlookat,0/);
+    assert.equal(adapter.setViewMode("normal"), "normal");
+    assert.match(calls.at(-1), /stereographic,false/);
+    assert.match(calls.at(-1), /lookto\(18,-4,72/);
+    assert.throws(() => adapter.setViewMode("unknown"), /不支持的视角模式/);
+  } finally {
+    if (previousEmbedpano === undefined) delete globalThis.embedpano;
+    else globalThis.embedpano = previousEmbedpano;
+  }
+});
+
+test("切换场景后重新应用当前特殊视角", async () => {
+  const previousEmbedpano = globalThis.embedpano;
+  const calls = [];
+  const player = {
+    get(key) {
+      return { "view.hlookat": "0", "view.vlookat": "0", "view.fov": "90" }[key];
+    },
+    call(command) { calls.push(command); }
+  };
+  globalThis.embedpano = (options) => options.onready(player);
+
+  try {
+    const adapter = new KrpanoAdapter({ targetId: "panorama" });
+    await adapter.loadScene(scene, 1);
+    adapter.setViewMode("fisheye");
+    await adapter.loadScene({ ...scene, sceneId: "76196993" }, 2);
+    assert.match(calls.at(-1), /fisheye,1\.0/);
+  } finally {
+    if (previousEmbedpano === undefined) delete globalThis.embedpano;
+    else globalThis.embedpano = previousEmbedpano;
+  }
+});
+
+test("VR 仅在播放器和插件可用时进入", async () => {
+  const previousEmbedpano = globalThis.embedpano;
+  const calls = [];
+  let available = false;
+  const player = {
+    get(key) { return key === "webvr.isavailable" ? available : "0"; },
+    call(command) { calls.push(command); }
+  };
+  globalThis.embedpano = (options) => options.onready(player);
+
+  try {
+    const adapter = new KrpanoAdapter({ targetId: "panorama" });
+    assert.throws(() => adapter.enterVr(), /尚未就绪/);
+    await adapter.initialize();
+    assert.equal(adapter.isVrAvailable(), false);
+    assert.throws(() => adapter.enterVr(), /当前设备或浏览器不支持 VR/);
+    available = true;
+    assert.equal(adapter.isVrAvailable(), true);
+    assert.equal(adapter.enterVr(), true);
+    assert.equal(calls.at(-1), "webvr.enterVR();");
   } finally {
     if (previousEmbedpano === undefined) delete globalThis.embedpano;
     else globalThis.embedpano = previousEmbedpano;
