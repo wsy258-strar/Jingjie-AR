@@ -42,6 +42,24 @@ function response(status, body, contentType = "application/json") {
   };
 }
 
+test("默认 fetch 保留 globalThis 作为调用接收者", async () => {
+  const originalFetch = globalThis.fetch;
+  try {
+    globalThis.fetch = function (url, options) {
+      assert.equal(this, globalThis);
+      assert.equal(url, "/api/example");
+      assert.equal(options.method, "GET");
+      return Promise.resolve(response(200, '{"success":true,"data":{"ok":true}}'));
+    };
+
+    const client = new ApiClient({ storage: storageWith() });
+
+    assert.deepEqual(await client.request("/api/example"), { ok: true });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("请求按需附带彼此独立的访客与用户令牌", async () => {
   const storage = storageWith({ "ar.visitorToken": "visitor-1", "ar.userToken": "user-1" });
   let received;

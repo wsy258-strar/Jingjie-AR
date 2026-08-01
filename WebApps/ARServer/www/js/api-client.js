@@ -39,7 +39,11 @@ async function readResponseBody(response) {
 }
 
 export class ApiClient {
-  constructor({ baseUrl = "", fetchImpl = globalThis.fetch, storage = defaultStorage() } = {}) {
+  constructor({ baseUrl = "", fetchImpl, storage = defaultStorage() } = {}) {
+    if (typeof fetchImpl === "undefined") {
+      if (typeof globalThis.fetch !== "function") throw new Error("fetch is unavailable");
+      fetchImpl = globalThis.fetch.bind(globalThis);
+    }
     if (typeof fetchImpl !== "function") throw new Error("fetch is unavailable");
     this.baseUrl = baseUrl;
     this.fetchImpl = fetchImpl;
