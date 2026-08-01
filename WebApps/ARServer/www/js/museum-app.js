@@ -85,6 +85,7 @@ function setMusicButtonState(state) {
 }
 
 const uiState = new MuseumUiState({ onChange: renderUiState });
+setMusicButtonState("unavailable");
 
 class MuseumApp {
   constructor() {
@@ -331,7 +332,8 @@ element("music-toggle").addEventListener("click", async () => {
     try {
       await audio.play();
       setMusicButtonState("playing");
-    } catch (_) {
+    } catch (error) {
+      if (error && error.name === "AbortError") return;
       notify("浏览器未允许播放音频，请再次尝试");
     }
   } else {
