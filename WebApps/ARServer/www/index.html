@@ -10,47 +10,52 @@
 </head>
 <body>
   <a class="skip-link" href="#panorama">跳到全景展厅</a>
-  <div class="museum-shell">
-    <header class="topbar">
-      <div class="identity">
-        <p class="identity-kicker">DIGITAL MUSEUM</p>
-        <h1 id="museum-title">正在载入展馆</h1>
-      </div>
-      <div class="topbar-actions">
-        <button id="description-open" class="plain-button" type="button" aria-haspopup="dialog">展馆简介</button>
-        <button id="login-open" class="accent-button" type="button" aria-haspopup="dialog">注册 / 登录</button>
-      </div>
-    </header>
+  <main id="museum-shell" class="museum-shell">
+    <section class="viewer-panel" aria-label="数字展馆全景浏览区">
+      <div id="panorama" class="panorama" tabindex="0" aria-label="360 度全景展厅"></div>
+      <div id="scene-loading" class="loading-pill" role="status">正在进入展厅…</div>
 
-    <main class="museum-main">
-      <section class="viewer-panel" aria-labelledby="scene-title">
-        <div id="panorama" class="panorama" tabindex="0" aria-label="360 度全景展厅"></div>
-        <div class="viewer-shade" aria-hidden="true"></div>
-        <div id="scene-loading" class="loading-pill" role="status">正在进入展厅…</div>
-        <div class="viewer-heading">
-          <p>360° PANORAMA</p>
-          <h2 id="scene-title">请选择场景</h2>
+      <header class="floating-header" aria-label="展馆导航">
+        <div class="glass-group identity">
+          <span class="identity-accent" aria-hidden="true"></span>
+          <h1 id="museum-title">正在载入展馆</h1>
         </div>
-        <div class="viewer-tools" aria-label="全景工具">
-          <button id="music-toggle" type="button" disabled>暂无音乐</button>
-          <button id="fullscreen-toggle" type="button">全屏浏览</button>
+        <nav class="header-actions" aria-label="展馆操作">
+          <button id="description-open" class="glass-button" type="button" aria-haspopup="dialog">展馆简介</button>
+          <button id="login-open" class="glass-button" type="button" aria-haspopup="dialog">注册 / 登录</button>
+        </nav>
+        <div class="glass-group statistics" aria-label="展馆统计">
+          <div><small>总浏览量</small><span id="total-views">—</span></div>
+          <div><small>当前在线</small><span id="online-count">—</span></div>
         </div>
-        <audio id="scene-audio" preload="none"></audio>
+      </header>
+
+      <nav class="viewer-toolbar" aria-label="全景工具">
+        <button id="fullscreen-toggle" class="icon-button" type="button" title="全屏浏览" aria-label="全屏浏览"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor"><path d="M8 3H3v5M16 3h5v5M8 21H3v-5M16 21h5v-5"/></svg></button>
+        <button id="music-toggle" class="icon-button" type="button" title="播放讲解" aria-label="播放讲解" disabled><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor"><path d="M9 18V5l10-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="16" cy="16" r="3"/></svg></button>
+        <button id="vr-toggle" class="icon-button" type="button" title="进入 VR" aria-label="进入 VR"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor"><path d="M3 8.5h18v8a2 2 0 0 1-2 2h-3.5l-2.1-3h-2.8l-2.1 3H5a2 2 0 0 1-2-2z"/><circle cx="7.5" cy="12.5" r="2"/><circle cx="16.5" cy="12.5" r="2"/></svg></button>
+        <button id="view-toggle" class="icon-button" type="button" title="视角切换" aria-label="视角切换" aria-controls="view-panel" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg></button>
+      </nav>
+
+      <section id="view-panel" class="view-panel glass-group" aria-labelledby="view-panel-title" hidden>
+        <h2 id="view-panel-title">视角切换</h2>
+        <div class="view-options">
+          <button type="button" data-view-mode="normal" aria-pressed="true"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m6 16 4-4 3 3 2-2 3 3"/></svg><span>正常</span></button>
+          <button type="button" data-view-mode="planet" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="8"/><path d="M4.5 9.5c4 2 11 2 15 0M4.5 14.5c4-2 11-2 15 0M12 4c-3 4-3 12 0 16M12 4c3 4 3 12 0 16"/></svg><span>小行星</span></button>
+          <button type="button" data-view-mode="fisheye" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="4"/><circle cx="12" cy="12" r="1"/></svg><span>鱼眼</span></button>
+          <button type="button" data-view-mode="crystal" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor"><circle cx="12" cy="10" r="7"/><path d="M7 19h10M9 17h6"/><path d="M7 8c2-3 7-4 10-1"/></svg><span>水晶球</span></button>
+        </div>
       </section>
 
-      <aside class="catalog-panel" aria-labelledby="catalog-title">
-        <div class="statistics" aria-label="展馆统计">
-          <div><span id="total-views">—</span><small>总浏览量</small></div>
-          <div><span id="online-count">—</span><small>当前在线</small></div>
-        </div>
-        <div class="catalog-heading">
-          <div><p>EXHIBITION MAP</p><h2 id="catalog-title">展馆目录</h2></div>
-          <span id="scene-count" aria-live="polite"></span>
-        </div>
+      <button id="scene-drawer-toggle" class="scene-drawer-toggle" type="button" aria-controls="scene-drawer" aria-expanded="false">
+        <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor"><rect x="4" y="4" width="6" height="6" rx="1"/><rect x="14" y="4" width="6" height="6" rx="1"/><rect x="4" y="14" width="6" height="6" rx="1"/><rect x="14" y="14" width="6" height="6" rx="1"/></svg><span>场景选择</span>
+      </button>
+      <section id="scene-drawer" class="scene-drawer" aria-label="场景选择" hidden>
         <nav id="scene-catalog" class="scene-catalog" aria-label="场景目录"></nav>
-      </aside>
-    </main>
-  </div>
+      </section>
+      <audio id="scene-audio" preload="none"></audio>
+    </section>
+  </main>
 
   <section id="description-modal" class="modal" role="dialog" aria-modal="true"
     aria-labelledby="description-title" aria-hidden="true">
