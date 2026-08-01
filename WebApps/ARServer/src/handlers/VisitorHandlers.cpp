@@ -170,15 +170,9 @@ void VisitorHandlers::bootstrap(const HttpRequest& request,
                     responder.send(unavailable("presence service unavailable", requestId));
                     return;
                 }
-                if (!result.incrementView)
-                {
-                    // 传输重试只恢复同一身份，不再次访问数据库或增加浏览量。
-                    responder.send(makeApiSuccess(bootstrapJson(result.token, false, 0)));
-                    return;
-                }
                 const std::string token = result.token;
                 statistics->incrementAndRead(
-                    exhibitionId,
+                    exhibitionId, bootstrapId,
                     [token, responder](bool ok, uint64_t count) {
                         responder.send(makeApiSuccess(bootstrapJson(token, ok, count)));
                     });
@@ -219,7 +213,7 @@ void VisitorHandlers::heartbeat(const HttpRequest& request,
     if (!cacheWorkers_->submit([visitors, presence, token, responder, requestId]() {
         try
         {
-            if (!visitors->valid(token))
+            if (!visitors->refresh(token))
             {
                 responder.send(unavailable("visitor identity service unavailable", requestId));
                 return;

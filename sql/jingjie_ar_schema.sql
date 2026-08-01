@@ -45,6 +45,15 @@ CREATE TABLE IF NOT EXISTS exhibition_statistics (
   PRIMARY KEY (exhibition_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+CREATE TABLE IF NOT EXISTS exhibition_view_events (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  exhibition_id VARCHAR(64) NOT NULL,
+  bootstrap_request_id VARCHAR(128) NOT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_exhibition_view_events_request (exhibition_id, bootstrap_request_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 CREATE TABLE IF NOT EXISTS artwork_likes (
   artwork_id VARCHAR(64) NOT NULL,
   user_id BIGINT UNSIGNED NOT NULL,

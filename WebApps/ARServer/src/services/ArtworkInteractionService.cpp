@@ -187,7 +187,7 @@ void ArtworkInteractionService::authenticate(const std::string& token, const Cal
             if (failure) failure(result(ArtworkInteractionResult::kUnavailable));
             return;
         }
-        if (!session)
+        if (!session || session->status != 1)
         {
             if (failure) failure(result(ArtworkInteractionResult::kUnauthorized));
             return;

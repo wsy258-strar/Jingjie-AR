@@ -351,8 +351,8 @@ void SessionDAO::createSession(uint64_t userId,
             callback(0);
             return;
         }
-        const char* sql = "INSERT INTO sessions (session_token, user_id, scene_id) "
-                          "VALUES (?, ?, ?)";
+        const char* sql = "INSERT INTO sessions (session_token, user_id, scene_id, status) "
+                          "VALUES (?, ?, ?, 1)";
         if (mysql_stmt_prepare(stmt, sql, strlen(sql)) != 0)
         {
             mysql_stmt_close(stmt);

@@ -19,7 +19,7 @@ const char* const kTokenB =
 class FakeVisitorStore : public ar::VisitorStore
 {
 public:
-    FakeVisitorStore() : saveAvailable(true), claimAvailable(true) {}
+    FakeVisitorStore() : saveAvailable(true), claimAvailable(true), saveCalls(0) {}
 
     bool exists(const std::string& token) override
     {
@@ -31,26 +31,25 @@ public:
     {
         std::lock_guard<std::mutex> lock(mutex);
         if (!saveAvailable || ttlSeconds != 1800) return false;
+        ++saveCalls;
         visitors[token] = ttlSeconds;
         return true;
     }
 
     bool claimBootstrap(const std::string& requestId, const std::string& candidateToken,
-                        int ttlSeconds, std::string* resolvedToken, bool* claimed) override
+                        int ttlSeconds, std::string* resolvedToken) override
     {
         std::lock_guard<std::mutex> lock(mutex);
-        if (!claimAvailable || !resolvedToken || !claimed || ttlSeconds != 300) return false;
+        if (!claimAvailable || !resolvedToken || ttlSeconds != 300) return false;
         std::map<std::string, std::string>::const_iterator existing = bootstraps.find(requestId);
         if (existing == bootstraps.end())
         {
             bootstraps[requestId] = candidateToken;
             *resolvedToken = candidateToken;
-            *claimed = true;
         }
         else
         {
             *resolvedToken = existing->second;
-            *claimed = false;
         }
         return true;
     }
@@ -60,6 +59,7 @@ public:
     std::map<std::string, std::string> bootstraps;
     bool saveAvailable;
     bool claimAvailable;
+    int saveCalls;
 };
 
 std::string tokenA()
@@ -82,18 +82,15 @@ int main()
     ar::VisitorBootstrapResult first = service.bootstrap("", "page-first");
     CHECK(first.status == ar::VisitorBootstrapResult::kOk);
     CHECK(first.token == kTokenA);
-    CHECK(first.incrementView);
     CHECK(service.valid(kTokenA));
 
     ar::VisitorBootstrapResult retry = service.bootstrap("", "page-first");
     CHECK(retry.status == ar::VisitorBootstrapResult::kOk);
     CHECK(retry.token == first.token);
-    CHECK(!retry.incrementView);
 
     ar::VisitorBootstrapResult refreshed = service.bootstrap(kTokenA, "page-refresh");
     CHECK(refreshed.status == ar::VisitorBootstrapResult::kOk);
     CHECK(refreshed.token == kTokenA);
-    CHECK(refreshed.incrementView);
 
     CHECK(service.bootstrap("", "").status == ar::VisitorBootstrapResult::kBadRequest);
     CHECK(service.bootstrap("", "contains space").status == ar::VisitorBootstrapResult::kBadRequest);
@@ -138,15 +135,40 @@ int main()
         }));
     }
     for (size_t index = 0; index < workers.size(); ++index) workers[index].join();
-    size_t increments = 0;
     for (size_t index = 0; index < results.size(); ++index)
     {
         CHECK(results[index].status == ar::VisitorBootstrapResult::kOk);
         CHECK(results[index].token == results[0].token);
-        if (results[index].incrementView) ++increments;
     }
-    CHECK(increments == 1);
     CHECK(concurrent.valid(results[0].token));
+
+    FakeVisitorStore refreshStore;
+    refreshStore.visitors[kTokenA] = 7;
+    ar::VisitorSessionService refreshService(&refreshStore, tokenA);
+    CHECK(refreshService.refresh(kTokenA));
+    CHECK(refreshStore.visitors[kTokenA] == 1800);
+    refreshStore.visitors.erase(kTokenA);
+    CHECK(refreshService.refresh(kTokenA));
+    CHECK(refreshStore.visitors[kTokenA] == 1800);
+    CHECK(!refreshService.refresh("short"));
+
+    FakeVisitorStore recoveredStore;
+    std::atomic<unsigned int> recoveredSequence(0);
+    ar::VisitorSessionService recoveredService(
+        &recoveredStore,
+        [&recoveredSequence]() {
+            return recoveredSequence.fetch_add(1) == 0
+                ? std::string(kTokenA) : std::string(kTokenB);
+        });
+    const ar::VisitorBootstrapResult recoveredFirst =
+        recoveredService.bootstrap("", "page-lost-visitor-key");
+    CHECK(recoveredFirst.status == ar::VisitorBootstrapResult::kOk);
+    recoveredStore.visitors.erase(kTokenA);
+    const ar::VisitorBootstrapResult recoveredRetry =
+        recoveredService.bootstrap("", "page-lost-visitor-key");
+    CHECK(recoveredRetry.status == ar::VisitorBootstrapResult::kOk);
+    CHECK(recoveredRetry.token == kTokenA);
+    CHECK(recoveredStore.visitors.find(kTokenA) != recoveredStore.visitors.end());
 
     return 0;
 }

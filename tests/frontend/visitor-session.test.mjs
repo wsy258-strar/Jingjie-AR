@@ -16,12 +16,14 @@ async function loadVisitorSession() {
   }
   return {
     target,
-    visitor: await import(pathToFileURL(join(target, "visitor-session.mjs")).href)
+    visitor: await import(pathToFileURL(join(target, "visitor-session.mjs")).href),
+    api: await import(pathToFileURL(join(target, "api-client.mjs")).href)
   };
 }
 
 const modules = await loadVisitorSession();
 const { VisitorSession } = modules.visitor;
+const { ApiError } = modules.api;
 process.once("exit", () => rmSync(modules.target, { recursive: true, force: true }));
 
 function storageWith(values = {}) {
@@ -128,4 +130,73 @@ test("心跳只建立一组定时器，pagehide 使用 keepalive 退出", async 
     path: "/api/presence/exit",
     options: { method: "POST", visitor: true, keepalive: true }
   });
+});
+
+test("心跳失败会显式标记不可用，后续定时心跳成功后恢复可用", async () => {
+  let intervalCallback;
+  let heartbeatCalls = 0;
+  const client = {
+    async request(path) {
+      assert.equal(path, "/api/presence/heartbeat");
+      heartbeatCalls += 1;
+      if (heartbeatCalls === 1) throw new ApiError(503, "SERVICE_UNAVAILABLE", "down", "r1");
+      return {};
+    }
+  };
+  const session = new VisitorSession({
+    client,
+    storage: storageWith({ "ar.visitorToken": "visitor-1" }),
+    setIntervalImpl(callback) { intervalCallback = callback; return 9; },
+    clearIntervalImpl() {}
+  });
+  session.available = true;
+
+  session.startHeartbeat();
+  intervalCallback();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(session.available, false);
+  assert.equal(session.unavailable, true);
+
+  intervalCallback();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(heartbeatCalls, 2);
+  assert.equal(session.available, true);
+  assert.equal(session.unavailable, false);
+});
+
+test("并发 401 心跳只用页面原 requestId 发起一次身份恢复", async () => {
+  const storage = storageWith();
+  const bootstrapIds = [];
+  let heartbeatCalls = 0;
+  let recoveryResolve;
+  const recoveryGate = new Promise((resolve) => { recoveryResolve = resolve; });
+  const client = {
+    async request(path, options) {
+      if (path === "/api/visitors/session") {
+        bootstrapIds.push(options.body.bootstrapRequestId);
+        if (bootstrapIds.length === 1) return { visitorToken: "visitor-old" };
+        await recoveryGate;
+        return { visitorToken: "visitor-recovered" };
+      }
+      assert.equal(path, "/api/presence/heartbeat");
+      heartbeatCalls += 1;
+      throw new ApiError(401, "VISITOR_TOKEN_INVALID", "expired", "heartbeat");
+    }
+  };
+  const session = new VisitorSession({
+    client, storage, randomUUID: () => "page-original-request"
+  });
+  await session.bootstrap();
+
+  const first = session.heartbeat();
+  const second = session.heartbeat();
+  await Promise.resolve();
+  recoveryResolve();
+  await Promise.all([first, second]);
+
+  assert.equal(heartbeatCalls, 2);
+  assert.deepEqual(bootstrapIds, ["page-original-request", "page-original-request"]);
+  assert.equal(storage.getItem("ar.visitorToken"), "visitor-recovered");
+  assert.equal(session.available, true);
+  assert.equal(session.unavailable, false);
 });

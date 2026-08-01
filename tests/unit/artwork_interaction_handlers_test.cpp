@@ -16,6 +16,8 @@ public:
     {
         if (token == "valid-token")
             callback(std::shared_ptr<Session>(new Session(1, token, 7, "", 1)));
+        else if (token == "inactive-token")
+            callback(std::shared_ptr<Session>(new Session(2, token, 8, "", 0)));
         else
             callback(std::shared_ptr<Session>());
     }
@@ -178,11 +180,38 @@ void testFailuresUseUnifiedErrorEnvelope()
     CHECK(response.body().find("\"success\":false") != std::string::npos);
 }
 
+void testInactiveBearerReturnsUnauthorizedForOptionalDetailAndProtectedWrite()
+{
+    std::unique_ptr<ar::ExhibitionCatalog> catalog = loadCatalog();
+    ImmediateSessionStore store;
+    ar::SessionService sessions(&store);
+    ImmediateDAO dao;
+    ar::ArtworkInteractionService service(catalog.get(), &sessions, &dao);
+    ar::ArtworkInteractionHandlers handlers(&service);
+    HttpRequest request;
+    request.setPathParameter("artworkId", knownArtworkId(*catalog));
+    request.setAttribute("auth.token", "inactive-token");
+    request.setAttribute("request_id", "inactive-session");
+
+    const HttpResponse detail = invoke([&](const AsyncResponder& responder) {
+        handlers.detail(request, responder);
+    });
+    CHECK(detail.statusCode() == HttpResponse::k401Unauthorized);
+    CHECK(detail.body().find("\"code\":\"UNAUTHORIZED\"") != std::string::npos);
+
+    const HttpResponse like = invoke([&](const AsyncResponder& responder) {
+        handlers.like(request, responder);
+    });
+    CHECK(like.statusCode() == HttpResponse::k401Unauthorized);
+    CHECK(like.body().find("\"code\":\"UNAUTHORIZED\"") != std::string::npos);
+}
+
 } // namespace
 
 int main()
 {
     testAllSuccessfulHandlersUseUnifiedEnvelopeAndEscapeJson();
     testFailuresUseUnifiedErrorEnvelope();
+    testInactiveBearerReturnsUnauthorizedForOptionalDetailAndProtectedWrite();
     return 0;
 }

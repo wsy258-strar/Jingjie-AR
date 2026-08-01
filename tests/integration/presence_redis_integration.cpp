@@ -6,6 +6,8 @@
 
 #include <cstdlib>
 
+#include <hiredis/hiredis.h>
+
 namespace {
 
 const char* const kTokenA =
@@ -29,13 +31,44 @@ int main(int argc, char** argv)
     ar::VisitorSessionService visitors(&visitorStore, tokenA);
     ar::VisitorBootstrapResult first = visitors.bootstrap("", "integration-bootstrap");
     CHECK(first.status == ar::VisitorBootstrapResult::kOk);
-    CHECK(first.incrementView);
     CHECK(first.token == kTokenA);
     ar::VisitorBootstrapResult retry = visitors.bootstrap(kTokenB, "integration-bootstrap");
     CHECK(retry.status == ar::VisitorBootstrapResult::kOk);
-    CHECK(!retry.incrementView);
     CHECK(retry.token == kTokenA);
     CHECK(visitors.valid(kTokenA));
+
+    std::shared_ptr<redisContext> redis = pool.borrow();
+    CHECK(redis.get() != 0);
+    redisReply* ttl = static_cast<redisReply*>(
+        redisCommand(redis.get(), "TTL visitor:{%s}", kTokenA));
+    CHECK(ttl != 0);
+    CHECK(ttl->type == REDIS_REPLY_INTEGER);
+    CHECK(ttl->integer > 0 && ttl->integer <= 1800);
+    freeReplyObject(ttl);
+
+    redisReply* expire = static_cast<redisReply*>(
+        redisCommand(redis.get(), "EXPIRE visitor:{%s} 1", kTokenA));
+    CHECK(expire != 0 && expire->type == REDIS_REPLY_INTEGER && expire->integer == 1);
+    freeReplyObject(expire);
+    redis.reset();
+    CHECK(visitors.refresh(kTokenA));
+    redis = pool.borrow();
+    CHECK(redis.get() != 0);
+    ttl = static_cast<redisReply*>(redisCommand(redis.get(), "TTL visitor:{%s}", kTokenA));
+    CHECK(ttl != 0 && ttl->type == REDIS_REPLY_INTEGER && ttl->integer > 1700);
+    freeReplyObject(ttl);
+
+    redisReply* removed = static_cast<redisReply*>(
+        redisCommand(redis.get(), "DEL visitor:{%s}", kTokenA));
+    CHECK(removed != 0 && removed->type == REDIS_REPLY_INTEGER && removed->integer == 1);
+    freeReplyObject(removed);
+    redis.reset();
+    ar::VisitorSessionService recovery(&visitorStore, [] { return std::string(kTokenB); });
+    const ar::VisitorBootstrapResult recovered =
+        recovery.bootstrap("", "integration-bootstrap");
+    CHECK(recovered.status == ar::VisitorBootstrapResult::kOk);
+    CHECK(recovered.token == kTokenA);
+    CHECK(recovery.valid(kTokenA));
 
     ar::RedisPresenceStore store(&pool);
     ar::PresenceService service(&store);

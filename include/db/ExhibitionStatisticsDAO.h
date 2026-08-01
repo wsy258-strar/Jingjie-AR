@@ -18,6 +18,7 @@ public:
     virtual ~ExhibitionStatisticsDAO() {}
 
     virtual void incrementAndRead(const std::string& exhibitionId,
+                                  const std::string& bootstrapRequestId,
                                   const CountCallback& callback);
     virtual void read(const std::string& exhibitionId, const CountCallback& callback);
 

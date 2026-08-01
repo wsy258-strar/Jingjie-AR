@@ -6,9 +6,13 @@ test -f "$schema"
 for table in users sessions scene_likes scene_comments; do
   grep -Fq "CREATE TABLE IF NOT EXISTS $table" "$schema"
 done
-for table in exhibition_statistics artwork_likes artwork_comments; do
+for table in exhibition_statistics exhibition_view_events artwork_likes artwork_comments; do
   grep -Fq "CREATE TABLE IF NOT EXISTS $table" "$schema"
 done
+view_events_definition="$(sed -n '/CREATE TABLE IF NOT EXISTS exhibition_view_events (/,/) ENGINE=InnoDB/p' "$schema")"
+grep -Fq 'exhibition_id VARCHAR(64) NOT NULL' <<<"$view_events_definition"
+grep -Fq 'bootstrap_request_id VARCHAR(128) NOT NULL' <<<"$view_events_definition"
+grep -Fq 'UNIQUE KEY uq_exhibition_view_events_request (exhibition_id, bootstrap_request_id)' <<<"$view_events_definition"
 grep -Fq 'UNIQUE KEY uq_users_username (username)' "$schema"
 grep -Fq 'UNIQUE KEY uq_sessions_token (session_token)' "$schema"
 users_definition="$(sed -n '/CREATE TABLE IF NOT EXISTS users (/,/) ENGINE=InnoDB/p' "$schema")"
@@ -22,3 +26,5 @@ for table in artwork_likes artwork_comments; do
 done
 grep -Fq 'sql/jingjie_ar_schema.sql' README.md
 ! test -e sql/jingjie_ar_scene_interactions.sql
+! grep -Fq 'INSERT IGNORE INTO exhibition_view_events' src/db/ExhibitionStatisticsDAO.cpp
+grep -Fq 'ER_DUP_ENTRY' src/db/ExhibitionStatisticsDAO.cpp

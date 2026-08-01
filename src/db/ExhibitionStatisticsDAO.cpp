@@ -6,6 +6,7 @@
 #include <cstring>
 #include <memory>
 #include <mysql/mysql.h>
+#include <mysql/mysqld_error.h>
 
 namespace {
 
@@ -66,6 +67,52 @@ bool increment(MYSQL* connection, const std::string& exhibitionId)
     return ok;
 }
 
+bool insertViewEvent(MYSQL* connection,
+                     const std::string& exhibitionId,
+                     const std::string& bootstrapRequestId,
+                     bool* inserted)
+{
+    if (!connection || !inserted) return false;
+    *inserted = false;
+    MYSQL_STMT* statement = mysql_stmt_init(connection);
+    const char* const sql =
+        "INSERT INTO exhibition_view_events "
+        "(exhibition_id, bootstrap_request_id) VALUES (?, ?)";
+    bool ok = statement && mysql_stmt_prepare(statement, sql, std::strlen(sql)) == 0;
+    MYSQL_BIND parameters[2];
+    std::memset(parameters, 0, sizeof(parameters));
+    unsigned long exhibitionIdLength = static_cast<unsigned long>(exhibitionId.size());
+    unsigned long requestIdLength = static_cast<unsigned long>(bootstrapRequestId.size());
+    parameters[0].buffer_type = MYSQL_TYPE_STRING;
+    parameters[0].buffer = const_cast<char*>(exhibitionId.data());
+    parameters[0].buffer_length = exhibitionIdLength;
+    parameters[0].length = &exhibitionIdLength;
+    parameters[1].buffer_type = MYSQL_TYPE_STRING;
+    parameters[1].buffer = const_cast<char*>(bootstrapRequestId.data());
+    parameters[1].buffer_length = requestIdLength;
+    parameters[1].length = &requestIdLength;
+    if (ok) ok = mysql_stmt_bind_param(statement, parameters) == 0;
+    if (ok)
+    {
+        if (mysql_stmt_execute(statement) == 0)
+        {
+            ok = mysql_stmt_affected_rows(statement) == 1;
+            *inserted = ok;
+        }
+        else if (mysql_stmt_errno(statement) == ER_DUP_ENTRY)
+        {
+            // 唯一键冲突表示同一页面初始化已记录，不是事务失败。
+            ok = true;
+        }
+        else
+        {
+            ok = false;
+        }
+    }
+    if (statement) mysql_stmt_close(statement);
+    return ok;
+}
+
 void complete(const ExhibitionStatisticsDAO::CountCallback& callback, bool ok, uint64_t count)
 {
     if (callback) callback(ok, ok ? count : 0);
@@ -75,13 +122,29 @@ void complete(const ExhibitionStatisticsDAO::CountCallback& callback, bool ok, u
 
 void ExhibitionStatisticsDAO::incrementAndRead(
     const std::string& exhibitionId,
+    const std::string& bootstrapRequestId,
     const CountCallback& callback)
 {
-    if (exhibitionId.empty() || !dbPool_ ||
-        !dbPool_->submit([exhibitionId, callback](std::shared_ptr<MYSQL> connection) {
+    if (exhibitionId.empty() || exhibitionId.size() > 64 ||
+        bootstrapRequestId.empty() || bootstrapRequestId.size() > 128 || !dbPool_ ||
+        !dbPool_->submit([exhibitionId, bootstrapRequestId, callback](
+                             std::shared_ptr<MYSQL> connection) {
             uint64_t count = 0;
-            const bool ok = connection && increment(connection.get(), exhibitionId) &&
-                            selectCount(connection.get(), exhibitionId, &count);
+            bool ok = connection && mysql_autocommit(connection.get(), 0) == 0;
+            bool inserted = false;
+            if (ok)
+                ok = insertViewEvent(connection.get(), exhibitionId,
+                                     bootstrapRequestId, &inserted);
+            if (ok && inserted) ok = increment(connection.get(), exhibitionId);
+            if (ok) ok = selectCount(connection.get(), exhibitionId, &count);
+            if (ok && mysql_commit(connection.get()) != 0)
+            {
+                ok = false;
+                mysql_rollback(connection.get());
+            }
+            else if (!ok && connection)
+                mysql_rollback(connection.get());
+            if (connection && mysql_autocommit(connection.get(), 1) != 0) ok = false;
             complete(callback, ok, count);
         }))
     {

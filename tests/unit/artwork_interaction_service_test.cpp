@@ -23,6 +23,8 @@ public:
         ++findCalls;
         if (token == "valid-token")
             callback(std::shared_ptr<Session>(new Session(1, token, 7, "", 1)));
+        else if (token == "inactive-token")
+            callback(std::shared_ptr<Session>(new Session(2, token, 8, "", 0)));
         else
             callback(std::shared_ptr<Session>());
     }
@@ -222,6 +224,27 @@ void testDuplicateLikeIsIdempotent()
     CHECK(dao.likeCalls == 1);
 }
 
+void testInactiveSessionCannotReadPersonalStateOrWriteArtwork()
+{
+    std::unique_ptr<ar::ExhibitionCatalog> catalog = loadCatalog();
+    RecordingSessionStore store;
+    ar::SessionService sessions(&store);
+    RecordingDAO dao;
+    ar::ArtworkInteractionService service(catalog.get(), &sessions, &dao);
+    const std::string artworkId = knownArtworkId(*catalog);
+    ar::ArtworkInteractionResult detail;
+    ar::ArtworkInteractionResult like;
+
+    service.detail("inactive-token", artworkId,
+                   [&detail](const ar::ArtworkInteractionResult& value) { detail = value; });
+    service.like("inactive-token", artworkId,
+                 [&like](const ar::ArtworkInteractionResult& value) { like = value; });
+
+    CHECK(detail.status == ar::ArtworkInteractionResult::kUnauthorized);
+    CHECK(like.status == ar::ArtworkInteractionResult::kUnauthorized);
+    CHECK(dao.likeCalls == 0);
+}
+
 void testCommentRejectsBlankAndOversizedBytes()
 {
     std::unique_ptr<ar::ExhibitionCatalog> catalog = loadCatalog();
@@ -399,6 +422,7 @@ int main()
     testUnknownArtworkWinsBeforeAuthentication();
     testAnonymousLikeIsUnauthorized();
     testDuplicateLikeIsIdempotent();
+    testInactiveSessionCannotReadPersonalStateOrWriteArtwork();
     testCommentRejectsBlankAndOversizedBytes();
     testCommentRejectsUnicodeWhitespaceAndInvalidUtf8();
     testCommentAcceptsExactlyOneThousandBytes();

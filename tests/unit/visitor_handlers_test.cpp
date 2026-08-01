@@ -25,7 +25,7 @@ const char* const kRequestId = "page-550e8400-e29b-41d4-a716-446655440000";
 class FakeVisitorStore : public ar::VisitorStore
 {
 public:
-    FakeVisitorStore() : available(true) {}
+    FakeVisitorStore() : available(true), saveCalls(0) {}
 
     bool exists(const std::string& token) override
     {
@@ -37,23 +37,19 @@ public:
     {
         std::lock_guard<std::mutex> lock(mutex);
         if (!available || token != kToken) return false;
+        ++saveCalls;
         saved = true;
         return true;
     }
 
     bool claimBootstrap(const std::string& requestId, const std::string& candidateToken,
-                        int, std::string* resolvedToken, bool* claimed) override
+                        int, std::string* resolvedToken) override
     {
         std::lock_guard<std::mutex> lock(mutex);
-        if (!available || !resolvedToken || !claimed) return false;
+        if (!available || !resolvedToken) return false;
         if (claimedIds.insert(requestId).second)
         {
             tokens[requestId] = candidateToken;
-            *claimed = true;
-        }
-        else
-        {
-            *claimed = false;
         }
         *resolvedToken = tokens[requestId];
         return true;
@@ -61,6 +57,7 @@ public:
 
     bool available;
     bool saved = false;
+    int saveCalls;
     std::mutex mutex;
     std::set<std::string> claimedIds;
     std::map<std::string, std::string> tokens;
@@ -88,11 +85,20 @@ class FakeStatisticsDAO : public ExhibitionStatisticsDAO
 {
 public:
     FakeStatisticsDAO() : ExhibitionStatisticsDAO(0), incrementCalls(0), readCalls(0),
-                          available(true), count(1287) {}
+                          available(true), failNextIncrement(false), count(1287) {}
 
-    void incrementAndRead(const std::string&, const CountCallback& callback) override
+    void incrementAndRead(const std::string&, const std::string& bootstrapRequestId,
+                          const CountCallback& callback) override
     {
         ++incrementCalls;
+        incrementRequestIds.push_back(bootstrapRequestId);
+        if (failNextIncrement)
+        {
+            failNextIncrement = false;
+            callback(false, 0);
+            return;
+        }
+        if (countedRequestIds.insert(bootstrapRequestId).second) ++count;
         callback(available, available ? count : 0);
     }
 
@@ -105,7 +111,10 @@ public:
     std::atomic<int> incrementCalls;
     std::atomic<int> readCalls;
     bool available;
+    bool failNextIncrement;
     uint64_t count;
+    std::vector<std::string> incrementRequestIds;
+    std::set<std::string> countedRequestIds;
 };
 
 struct Capture
@@ -164,7 +173,7 @@ void testBootstrapIsIdempotentPerRequestIdButNewRequestIncrements()
     CHECK(response.statusCode() == HttpResponse::k200Ok);
     CHECK(response.body().find(std::string("\"visitorToken\":\"") + kToken + "\"") !=
           std::string::npos);
-    CHECK(response.body().find("\"totalViews\":1287") != std::string::npos);
+    CHECK(response.body().find("\"totalViews\":1288") != std::string::npos);
     CHECK(response.body().find("\"statisticsAvailable\":true") != std::string::npos);
     CHECK(statistics.incrementCalls.load() == 1);
 
@@ -175,14 +184,49 @@ void testBootstrapIsIdempotentPerRequestIdButNewRequestIncrements()
     CHECK(response.statusCode() == HttpResponse::k200Ok);
     CHECK(response.body().find(std::string("\"visitorToken\":\"") + kToken + "\"") !=
           std::string::npos);
-    CHECK(statistics.incrementCalls.load() == 1);
+    CHECK(response.body().find("\"totalViews\":1288") != std::string::npos);
+    CHECK(statistics.incrementCalls.load() == 2);
+    CHECK(statistics.incrementRequestIds.size() == 2);
+    CHECK(statistics.incrementRequestIds[0] == kRequestId);
+    CHECK(statistics.incrementRequestIds[1] == kRequestId);
 
     HttpRequest refresh = bootstrapRequest("page-new-request", true);
     response = waitFor([&](const AsyncResponder& responder) {
         handlers.bootstrap(refresh, responder);
     });
     CHECK(response.statusCode() == HttpResponse::k200Ok);
+    CHECK(statistics.incrementCalls.load() == 3);
+    CHECK(response.body().find("\"totalViews\":1289") != std::string::npos);
+}
+
+void testBootstrapRetriesDatabaseAfterFailedTransactionWithSameRequestId()
+{
+    FakeVisitorStore visitors;
+    FakePresenceStore presenceStore;
+    FakeStatisticsDAO statistics;
+    statistics.failNextIncrement = true;
+    ar::VisitorSessionService sessions(&visitors, [] { return std::string(kToken); });
+    ar::PresenceService presence(&presenceStore);
+    TaskWorkerPool workers(1, 8);
+    ar::VisitorHandlers handlers(&sessions, &presence, &statistics, &workers, "museum");
+
+    HttpRequest request = bootstrapRequest("page-database-retry", false);
+    HttpResponse first = waitFor([&](const AsyncResponder& responder) {
+        handlers.bootstrap(request, responder);
+    });
+    CHECK(first.statusCode() == HttpResponse::k200Ok);
+    CHECK(first.body().find("\"statisticsAvailable\":false") != std::string::npos);
+
+    HttpRequest retry = bootstrapRequest("page-database-retry", true);
+    HttpResponse second = waitFor([&](const AsyncResponder& responder) {
+        handlers.bootstrap(retry, responder);
+    });
+    CHECK(second.statusCode() == HttpResponse::k200Ok);
+    CHECK(second.body().find("\"statisticsAvailable\":true") != std::string::npos);
+    CHECK(second.body().find("\"totalViews\":1288") != std::string::npos);
     CHECK(statistics.incrementCalls.load() == 2);
+    CHECK(statistics.incrementRequestIds[0] == "page-database-retry");
+    CHECK(statistics.incrementRequestIds[1] == "page-database-retry");
 }
 
 void testBootstrapValidationAndDependencyFailures()
@@ -248,6 +292,13 @@ void testPresenceEndpointsRequireVisitorAndDegradeIndependently()
     });
 
     heartbeat.addHeader("X-Visitor-Token", kToken);
+    visitors.saved = false;
+    response = waitFor([&](const AsyncResponder& responder) {
+        handlers.heartbeat(heartbeat, responder);
+    });
+    CHECK(response.statusCode() == HttpResponse::k200Ok);
+    CHECK(visitors.saved);
+
     presenceStore.touchOk = false;
     response = waitFor([&](const AsyncResponder& responder) {
         handlers.heartbeat(heartbeat, responder);
@@ -298,7 +349,7 @@ void testViewsAndExitResponses()
     HttpResponse response = waitFor([&](const AsyncResponder& responder) {
         handlers.views(views, responder);
     });
-    CHECK(response.body().find("\"totalViews\":1287") != std::string::npos);
+    CHECK(response.body().find("\"totalViews\":1288") != std::string::npos);
 
     HttpRequest exit;
     exit.addHeader("X-Visitor-Token", kToken);
@@ -314,6 +365,7 @@ void testViewsAndExitResponses()
 int main()
 {
     testBootstrapIsIdempotentPerRequestIdButNewRequestIncrements();
+    testBootstrapRetriesDatabaseAfterFailedTransactionWithSameRequestId();
     testBootstrapValidationAndDependencyFailures();
     testPresenceEndpointsRequireVisitorAndDegradeIndependently();
     testViewsAndExitResponses();

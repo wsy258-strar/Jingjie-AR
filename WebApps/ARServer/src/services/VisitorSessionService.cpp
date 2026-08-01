@@ -1,4 +1,4 @@
-// 匿名访客会话实现：使用 Redis 短期认领键消除初始化传输重试的重复计数。
+// 匿名访客会话实现：Redis 认领键只绑定同页面重试身份，浏览幂等由 MySQL 保证。
 #include <services/VisitorSessionService.h>
 
 #include <cache/RedisConnectionPool.h>
@@ -88,6 +88,11 @@ bool VisitorSessionService::valid(const std::string& token) const
     return store_ && validTokenSyntax(token) && store_->exists(token);
 }
 
+bool VisitorSessionService::refresh(const std::string& token)
+{
+    return store_ && validTokenSyntax(token) && store_->save(token, kVisitorTtlSeconds);
+}
+
 VisitorBootstrapResult VisitorSessionService::bootstrap(
     const std::string& existingToken,
     const std::string& bootstrapRequestId)
@@ -118,10 +123,10 @@ VisitorBootstrapResult VisitorSessionService::bootstrap(
     }
 
     std::string resolvedToken;
-    bool claimed = false;
     if (!store_->claimBootstrap(bootstrapRequestId, candidateToken,
-                                kBootstrapTtlSeconds, &resolvedToken, &claimed) ||
-        !validTokenSyntax(resolvedToken) || !store_->exists(resolvedToken))
+                                kBootstrapTtlSeconds, &resolvedToken) ||
+        !validTokenSyntax(resolvedToken) ||
+        !store_->save(resolvedToken, kVisitorTtlSeconds))
     {
         result.status = VisitorBootstrapResult::kUnavailable;
         return result;
@@ -129,7 +134,6 @@ VisitorBootstrapResult VisitorSessionService::bootstrap(
 
     result.status = VisitorBootstrapResult::kOk;
     result.token = resolvedToken;
-    result.incrementView = claimed;
     return result;
 }
 
@@ -186,15 +190,13 @@ bool RedisVisitorStore::save(const std::string& token, int ttlSeconds)
 bool RedisVisitorStore::claimBootstrap(const std::string& requestId,
                                        const std::string& candidateToken,
                                        int ttlSeconds,
-                                       std::string* resolvedToken,
-                                       bool* claimed)
+                                       std::string* resolvedToken)
 {
 #ifdef HAS_REDIS
     if (!pool_ || requestId.empty() || candidateToken.empty() || ttlSeconds <= 0 ||
-        !resolvedToken || !claimed)
+        !resolvedToken)
         return false;
     resolvedToken->clear();
-    *claimed = false;
 
     std::shared_ptr<redisContext> connection = pool_->borrow();
     if (!connection) return false;
@@ -210,7 +212,6 @@ bool RedisVisitorStore::claimBootstrap(const std::string& requestId,
             freeReplyObject(setReply);
             return false;
         }
-        *claimed = true;
     }
     else if (setReply->type != REDIS_REPLY_NIL)
     {
@@ -235,7 +236,6 @@ bool RedisVisitorStore::claimBootstrap(const std::string& requestId,
     (void)candidateToken;
     (void)ttlSeconds;
     (void)resolvedToken;
-    (void)claimed;
     return false;
 #endif
 }

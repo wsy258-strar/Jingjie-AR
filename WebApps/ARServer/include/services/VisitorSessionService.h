@@ -17,8 +17,7 @@ public:
     virtual bool claimBootstrap(const std::string& requestId,
                                 const std::string& candidateToken,
                                 int ttlSeconds,
-                                std::string* resolvedToken,
-                                bool* claimed) = 0;
+                                std::string* resolvedToken) = 0;
 };
 
 struct VisitorBootstrapResult
@@ -30,11 +29,10 @@ struct VisitorBootstrapResult
         kUnavailable
     };
 
-    VisitorBootstrapResult() : status(kUnavailable), incrementView(false) {}
+    VisitorBootstrapResult() : status(kUnavailable) {}
 
     Status status;
     std::string token;
-    bool incrementView;
 };
 
 class VisitorSessionService
@@ -47,6 +45,7 @@ public:
 
     VisitorBootstrapResult bootstrap(const std::string& existingToken,
                                      const std::string& bootstrapRequestId);
+    bool refresh(const std::string& token);
     bool valid(const std::string& token) const;
 
 private:
@@ -68,8 +67,7 @@ public:
     bool claimBootstrap(const std::string& requestId,
                         const std::string& candidateToken,
                         int ttlSeconds,
-                        std::string* resolvedToken,
-                        bool* claimed) override;
+                        std::string* resolvedToken) override;
 
 private:
     static std::string visitorKey(const std::string& token);

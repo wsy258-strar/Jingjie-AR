@@ -369,6 +369,25 @@ add_executable(session_dao_test tests/unit/session_dao_test.cpp)
     target_link_libraries(session_dao_test src_lib ar_data memory_lib ${LIBS})
 add_test(NAME session_dao_test COMMAND session_dao_test)
 
+add_test(NAME session_status_static_test
+    COMMAND bash ${CMAKE_SOURCE_DIR}/tests/integration/session_status_static_test.sh)
+set_tests_properties(session_status_static_test PROPERTIES
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+
+add_executable(session_status_mysql_integration_test
+    tests/integration/session_status_mysql_integration.cpp)
+target_include_directories(session_status_mysql_integration_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/tests)
+target_link_libraries(session_status_mysql_integration_test
+    src_lib ar_data memory_lib ${LIBS})
+add_test(NAME session_status_mysql_integration
+    COMMAND bash
+        ${CMAKE_SOURCE_DIR}/tests/integration/session_status_mysql_integration.sh
+        $<TARGET_FILE:session_status_mysql_integration_test>)
+set_tests_properties(session_status_mysql_integration PROPERTIES
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    SKIP_RETURN_CODE 77)
+
 add_executable(scene_interaction_dao_test tests/unit/scene_interaction_dao_test.cpp
     src/db/SceneInteractionDAO.cpp)
 target_include_directories(scene_interaction_dao_test PRIVATE ${CMAKE_SOURCE_DIR}/tests)
@@ -401,6 +420,21 @@ target_include_directories(exhibition_statistics_dao_test PRIVATE ${CMAKE_SOURCE
 target_link_libraries(exhibition_statistics_dao_test
     src_lib ar_data memory_lib ${LIBS})
 add_test(NAME exhibition_statistics_dao_test COMMAND exhibition_statistics_dao_test)
+
+add_executable(exhibition_statistics_mysql_integration_test
+    tests/integration/exhibition_statistics_mysql_integration.cpp)
+target_include_directories(exhibition_statistics_mysql_integration_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/tests)
+target_link_libraries(exhibition_statistics_mysql_integration_test
+    src_lib ar_data memory_lib ${LIBS})
+add_test(NAME exhibition_statistics_mysql_integration
+    COMMAND bash
+        ${CMAKE_SOURCE_DIR}/tests/integration/exhibition_statistics_mysql_integration.sh
+        $<TARGET_FILE:exhibition_statistics_mysql_integration_test>)
+set_tests_properties(exhibition_statistics_mysql_integration PROPERTIES
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    SKIP_RETURN_CODE 77
+    RUN_SERIAL TRUE)
 
 add_executable(visitor_handlers_test
     tests/unit/visitor_handlers_test.cpp

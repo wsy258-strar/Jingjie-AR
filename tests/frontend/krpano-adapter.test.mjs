@@ -162,3 +162,50 @@ test("第二次加载场景沿用切换前视角", async () => {
     else globalThis.embedpano = previousEmbedpano;
   }
 });
+
+test("loadxml 抛错时保留旧场景热点映射与已加载状态", async () => {
+  const previousEmbedpano = globalThis.embedpano;
+  const selected = [];
+  let shouldThrow = false;
+  const player = {
+    get() { return "0"; },
+    call() {
+      if (shouldThrow) throw new Error("loadxml failed");
+    }
+  };
+  globalThis.embedpano = (options) => options.onready(player);
+  const nextScene = {
+    ...scene,
+    sceneId: "76196993",
+    hotspots: [{
+      hotspotId: "new-scene-hotspot",
+      type: "scene",
+      title: "新场景热点",
+      ath: 1,
+      atv: 2,
+      iconUrl: "/assets/hotspot/new_spotd1_gif.png",
+      targetSceneId: "76196994",
+      renderable: true
+    }]
+  };
+
+  try {
+    const adapter = new KrpanoAdapter({
+      targetId: "panorama",
+      onHotspot(hotspot) { selected.push(hotspot.hotspotId); }
+    });
+    assert.equal(await adapter.loadScene(scene, 1), true);
+    assert.equal(adapter.loaded, true);
+    assert.equal(adapter.currentHotspots[0].hotspotId, "scene-hotspot");
+
+    shouldThrow = true;
+    await assert.rejects(adapter.loadScene(nextScene, 2), /loadxml failed/);
+    assert.equal(adapter.loaded, true);
+    assert.equal(adapter.currentHotspots[0].hotspotId, "scene-hotspot");
+    globalThis.JingjieARHotspotBridge(0);
+    assert.deepEqual(selected, ["scene-hotspot"]);
+  } finally {
+    if (previousEmbedpano === undefined) delete globalThis.embedpano;
+    else globalThis.embedpano = previousEmbedpano;
+  }
+});

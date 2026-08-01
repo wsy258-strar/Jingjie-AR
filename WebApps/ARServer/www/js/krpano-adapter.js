@@ -140,9 +140,10 @@ export class KrpanoAdapter {
     if (requestedGeneration !== this.latestGeneration) return false;
 
     const preservedView = this.loaded ? this.getView() : null;
-    this.currentHotspots = renderableHotspots(scene);
+    const nextHotspots = renderableHotspots(scene);
     const xml = buildSceneXml(scene, preservedView);
     this.player.call(`loadxml('${krpanoActionString(xml)}', null, RESET);`);
+    this.currentHotspots = nextHotspots;
     this.loaded = true;
     return true;
   }

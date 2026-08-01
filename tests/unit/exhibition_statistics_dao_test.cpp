@@ -9,7 +9,7 @@ void testUnavailablePoolCompletesCallbacksOnceWithSafeDefaults()
     ExhibitionStatisticsDAO dao(0);
     int callbacks = 0;
 
-    dao.incrementAndRead("museum", [&callbacks](bool ok, uint64_t count) {
+    dao.incrementAndRead("museum", "bootstrap-1", [&callbacks](bool ok, uint64_t count) {
         CHECK(!ok);
         CHECK(count == 0);
         ++callbacks;
@@ -27,12 +27,19 @@ void testEmptyExhibitionIdIsRejectedWithoutSubmittingWork()
 {
     ExhibitionStatisticsDAO dao(0);
     int callbacks = 0;
-    dao.incrementAndRead("", [&callbacks](bool ok, uint64_t count) {
+    dao.incrementAndRead("", "bootstrap-1", [&callbacks](bool ok, uint64_t count) {
         CHECK(!ok);
         CHECK(count == 0);
         ++callbacks;
     });
     CHECK(callbacks == 1);
+
+    dao.incrementAndRead("museum", "", [&callbacks](bool ok, uint64_t count) {
+        CHECK(!ok);
+        CHECK(count == 0);
+        ++callbacks;
+    });
+    CHECK(callbacks == 2);
 }
 
 } // namespace

@@ -41,6 +41,8 @@ export class VisitorSession {
     this.bootstrapRequestId = "";
     this.bootstrapResult = null;
     this.heartbeatTimer = null;
+    this.recoveryPromise = null;
+    this.lastError = null;
     this.pagehideBound = false;
     this.onPagehide = this.onPagehide.bind(this);
   }
@@ -81,6 +83,7 @@ export class VisitorSession {
     this.available = true;
     this.unavailable = false;
     this.bootstrapResult = result;
+    this.lastError = null;
     return result;
   }
 
@@ -96,13 +99,42 @@ export class VisitorSession {
     return !(error instanceof ApiError) && !(error && error.name === "AbortError");
   }
 
+  recover() {
+    if (this.recoveryPromise) return this.recoveryPromise;
+    if (!this.bootstrapRequestId) return Promise.resolve(false);
+    const requestId = this.bootstrapRequestId;
+    this.recoveryPromise = Promise.resolve()
+      .then(() => this.requestBootstrap(requestId))
+      .then((result) => Boolean(this.acceptBootstrap(result)))
+      .catch((error) => {
+        this.markUnavailable(error);
+        return false;
+      })
+      .finally(() => { this.recoveryPromise = null; });
+    return this.recoveryPromise;
+  }
+
+  async heartbeat() {
+    try {
+      await this.client.request("/api/presence/heartbeat", { method: "POST", visitor: true });
+      this.available = true;
+      this.unavailable = false;
+      this.lastError = null;
+      return true;
+    } catch (error) {
+      this.available = false;
+      this.unavailable = true;
+      this.lastError = error;
+      if (error instanceof ApiError && error.status === 401)
+        return this.recover();
+      return false;
+    }
+  }
+
   startHeartbeat() {
     if (this.heartbeatTimer !== null) return;
     if (typeof this.setIntervalImpl !== "function") return;
-    this.heartbeatTimer = this.setIntervalImpl(() => {
-      this.client.request("/api/presence/heartbeat", { method: "POST", visitor: true })
-        .catch(() => {});
-    }, HEARTBEAT_INTERVAL_MS);
+    this.heartbeatTimer = this.setIntervalImpl(() => { this.heartbeat(); }, HEARTBEAT_INTERVAL_MS);
     if (this.eventTarget && !this.pagehideBound) {
       this.eventTarget.addEventListener("pagehide", this.onPagehide);
       this.pagehideBound = true;
