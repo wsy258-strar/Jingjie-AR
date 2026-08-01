@@ -6,6 +6,7 @@ import { KrpanoAdapter } from "./krpano-adapter.js";
 import { ArtworkModal } from "./artwork-modal.js";
 import { MuseumLifecycle } from "./museum-lifecycle.js";
 import { ModalFocusManager } from "./modal-focus.js";
+import { MuseumUiState } from "./museum-ui-state.js";
 
 const api = new ApiClient();
 let loginWaiter = null;
@@ -25,6 +26,7 @@ function notify(message) {
 
 function openLogin() {
   if (loginWaiter) return loginWaiter.promise;
+  uiState.closeTransientLayers();
   const modal = element("login-modal");
   element("login-message").textContent = "";
   let resolveWaiter;
@@ -55,6 +57,34 @@ const visitor = new VisitorSession({ client: api });
 const lifecycle = new MuseumLifecycle({ visitor, refreshCounters: () => app.loadCounters() });
 const modalManager = new ModalFocusManager();
 const artworkModal = new ArtworkModal({ api, auth, modalManager, notify });
+
+function renderUiState(state) {
+  const drawer = element("scene-drawer");
+  const drawerToggle = element("scene-drawer-toggle");
+  drawer.hidden = !state.sceneDrawerOpen;
+  drawer.classList.toggle("is-open", state.sceneDrawerOpen);
+  drawerToggle.setAttribute("aria-expanded", String(state.sceneDrawerOpen));
+
+  const viewPanel = element("view-panel");
+  const viewToggle = element("view-toggle");
+  viewPanel.hidden = !state.viewPanelOpen;
+  viewToggle.classList.toggle("is-active", state.viewPanelOpen);
+  viewToggle.setAttribute("aria-expanded", String(state.viewPanelOpen));
+
+  document.querySelectorAll("[data-view-mode]").forEach((button) => {
+    button.setAttribute("aria-pressed", String(button.dataset.viewMode === state.viewMode));
+  });
+}
+
+function setMusicButtonState(state) {
+  const button = element("music-toggle");
+  const playing = state === "playing";
+  button.classList.toggle("is-playing", playing);
+  button.setAttribute("aria-label", playing ? "暂停讲解" : "播放讲解");
+  button.title = button.disabled ? "当前场景暂无音乐" : button.getAttribute("aria-label");
+}
+
+const uiState = new MuseumUiState({ onChange: renderUiState });
 
 class MuseumApp {
   constructor() {
@@ -97,7 +127,6 @@ class MuseumApp {
     element("museum-description").textContent = catalog.remark || "暂无展馆简介。";
     document.title = catalog.title || "数字展馆";
     const scenes = Array.isArray(catalog.scenes) ? catalog.scenes : [];
-    element("scene-count").textContent = `${scenes.length} 个场景`;
     const container = element("scene-catalog");
     container.textContent = "";
     for (const scene of scenes) {
@@ -112,7 +141,10 @@ class MuseumApp {
       const label = document.createElement("span");
       label.textContent = scene.name;
       button.append(image, label);
-      button.addEventListener("click", () => this.switchScene(scene.sceneId));
+      button.addEventListener("click", () => {
+        uiState.closeTransientLayers();
+        this.switchScene(scene.sceneId);
+      });
       container.appendChild(button);
     }
   }
@@ -133,7 +165,6 @@ class MuseumApp {
       const loaded = await this.adapter.loadScene(scene, generation);
       if (!loaded || generation !== this.sceneGeneration) return;
       this.currentScene = scene;
-      element("scene-title").textContent = scene.name;
       this.markCurrentScene(scene.sceneId);
       this.configureMusic(scene.music);
       element("scene-loading").hidden = true;
@@ -158,8 +189,10 @@ class MuseumApp {
     if (hotspot.type === "scene" && hotspot.targetSceneId) {
       this.switchScene(hotspot.targetSceneId);
     } else if (hotspot.type === "artwork" && hotspot.artworkId) {
+      uiState.closeTransientLayers();
       artworkModal.open(hotspot.artworkId);
     } else if (hotspot.type === "text") {
+      uiState.closeTransientLayers();
       artworkModal.openText(hotspot);
     } else {
       notify("该展项暂不支持打开");
@@ -171,16 +204,16 @@ class MuseumApp {
     const button = element("music-toggle");
     audio.pause();
     audio.removeAttribute("src");
-    button.textContent = "暂无音乐";
     button.disabled = true;
+    setMusicButtonState("unavailable");
     if (!music.url) return;
     audio.src = music.url;
     audio.volume = Math.max(0, Math.min(1, Number(music.volume) || 1));
     audio.loop = Boolean(music.loop);
     button.disabled = false;
-    button.textContent = "播放讲解";
+    setMusicButtonState("paused");
     if (music.autoplay) {
-      audio.play().then(() => { button.textContent = "暂停讲解"; }).catch(() => {});
+      audio.play().then(() => { setMusicButtonState("playing"); }).catch(() => {});
     }
   }
 
@@ -203,11 +236,46 @@ class MuseumApp {
 const app = new MuseumApp();
 
 element("description-open").addEventListener("click", () => {
+  uiState.closeTransientLayers();
   const modal = element("description-modal");
   modalManager.open(modal, {
     initialFocus: modal.querySelector(".modal-card"),
     onEscape: () => modalManager.close(modal)
   });
+});
+
+element("scene-drawer-toggle").addEventListener("click", (event) => {
+  event.stopPropagation();
+  uiState.toggleSceneDrawer();
+});
+
+element("view-toggle").addEventListener("click", (event) => {
+  event.stopPropagation();
+  uiState.toggleViewPanel();
+});
+
+element("scene-drawer").addEventListener("click", (event) => event.stopPropagation());
+element("view-panel").addEventListener("click", (event) => event.stopPropagation());
+
+document.querySelectorAll("[data-view-mode]").forEach((button) => {
+  button.addEventListener("click", () => {
+    const mode = button.dataset.viewMode;
+    try {
+      app.adapter.setViewMode(mode);
+      uiState.selectViewMode(mode);
+    } catch (error) {
+      notify(error.message || "视角切换失败");
+    }
+  });
+});
+
+for (const type of ["pointerdown", "wheel"]) {
+  element("panorama").addEventListener(type, () => uiState.closeTransientLayers(), { passive: true });
+}
+
+document.addEventListener("click", () => uiState.closeTransientLayers());
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") uiState.closeTransientLayers();
 });
 
 document.querySelectorAll('[data-close="description"]').forEach((button) => {
@@ -258,32 +326,47 @@ element("login-form").addEventListener("submit", async (event) => {
 
 element("music-toggle").addEventListener("click", async () => {
   const audio = element("scene-audio");
-  const button = element("music-toggle");
   if (!audio.src) return;
   if (audio.paused) {
     try {
       await audio.play();
-      button.textContent = "暂停讲解";
+      setMusicButtonState("playing");
     } catch (_) {
       notify("浏览器未允许播放音频，请再次尝试");
     }
   } else {
     audio.pause();
-    button.textContent = "播放讲解";
+    setMusicButtonState("paused");
   }
 });
 
 element("scene-audio").addEventListener("ended", () => {
-  element("music-toggle").textContent = "播放讲解";
+  setMusicButtonState("paused");
 });
 
 element("fullscreen-toggle").addEventListener("click", async () => {
-  const target = element("panorama");
+  const target = element("museum-shell");
   try {
     if (!document.fullscreenElement) await target.requestFullscreen();
     else await document.exitFullscreen();
   } catch (_) {
     notify("当前浏览器无法进入全屏模式");
+  }
+});
+
+document.addEventListener("fullscreenchange", () => {
+  const active = document.fullscreenElement === element("museum-shell");
+  const button = element("fullscreen-toggle");
+  button.classList.toggle("is-fullscreen", active);
+  button.setAttribute("aria-label", active ? "退出全屏" : "全屏浏览");
+  button.title = button.getAttribute("aria-label");
+});
+
+element("vr-toggle").addEventListener("click", () => {
+  try {
+    app.adapter.enterVr();
+  } catch (error) {
+    notify(error.message || "当前设备或浏览器无法进入 VR");
   }
 });
 
