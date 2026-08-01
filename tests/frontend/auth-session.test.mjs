@@ -78,3 +78,28 @@ test("没有用户令牌时认证检查要求界面登录，clear 不影响访�
   session.clear();
   assert.equal(storage.getItem("ar.visitorToken"), "visitor-1");
 });
+
+test("退出登录先请求服务端撤销，成功后才清理本地用户令牌", async () => {
+  const storage = storageWith({ "ar.userToken": "user-1", "ar.visitorToken": "visitor-1" });
+  const calls = [];
+  const session = new AuthSession({
+    storage,
+    client: { async request(path, options) { calls.push({ path, options }); return {}; } }
+  });
+
+  assert.equal(await session.logout(), true);
+  assert.deepEqual(calls, [{ path: "/api/auth/logout", options: { method: "POST", user: true } }]);
+  assert.equal(storage.getItem("ar.userToken"), null);
+  assert.equal(storage.getItem("ar.visitorToken"), "visitor-1");
+});
+
+test("退出请求失败时保留本地令牌以明确表示撤销未完成", async () => {
+  const storage = storageWith({ "ar.userToken": "user-1" });
+  const session = new AuthSession({
+    storage,
+    client: { async request() { throw new TypeError("network down"); } }
+  });
+
+  await assert.rejects(session.logout(), /network down/);
+  assert.equal(storage.getItem("ar.userToken"), "user-1");
+});

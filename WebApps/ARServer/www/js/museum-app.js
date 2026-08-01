@@ -221,11 +221,15 @@ document.querySelectorAll('[data-close="description"]').forEach((button) => {
   });
 });
 
-element("login-open").addEventListener("click", () => {
+element("login-open").addEventListener("click", async () => {
   if (auth.token()) {
-    auth.clear();
-    element("login-open").textContent = "注册 / 登录";
-    notify("已退出登录");
+    try {
+      await auth.logout();
+      element("login-open").textContent = "注册 / 登录";
+      notify("已退出登录");
+    } catch (error) {
+      notify(error.message || "服务端会话撤销失败，请检查网络后重试");
+    }
   } else {
     openLogin().catch(() => {});
   }

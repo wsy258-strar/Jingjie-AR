@@ -47,6 +47,10 @@ ARServer::ARServer(EventLoop* loop, const InetAddress& address,
                                                 const AsyncResponder& responder) {
             auth->handle(request, responder);
         });
+        server_.PostAsync("/api/auth/logout", [auth](const HttpRequest& request,
+                                                       const AsyncResponder& responder) {
+            auth->logout(request, responder);
+        });
     }
     if (visitors)
     {

@@ -14,6 +14,7 @@ public:
     virtual ~SessionCachePort() {}
     virtual bool get(const std::string& token, Session& output) = 0;
     virtual bool put(const Session& session) = 0;
+    virtual bool putIfAbsent(const Session& session) = 0;
     virtual bool remove(const std::string& token) = 0;
 };
 
@@ -23,6 +24,7 @@ public:
     explicit SessionCacheAdapter(SessionCache* cache) : cache_(cache) {}
     bool get(const std::string& token, Session& output) override;
     bool put(const Session& session) override;
+    bool putIfAbsent(const Session& session) override;
     bool remove(const std::string& token) override;
 private:
     SessionCache* cache_;
@@ -36,6 +38,7 @@ public:
     void find(const std::string& token, const SessionCallback& callback) override;
     void enter(uint64_t sessionId, const std::string& sceneId, const BoolCallback& callback) override;
     void exit(uint64_t sessionId, const BoolCallback& callback) override;
+    void revoke(const std::string& token, const BoolCallback& callback) override;
     void invalidate(const std::string& token) override;
 private:
     SessionStore* durable_;

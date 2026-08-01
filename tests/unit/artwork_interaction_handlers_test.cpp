@@ -32,11 +32,11 @@ public:
 
     void like(const std::string&, uint64_t, const LikeCallback& callback) override
     {
-        callback(true, true, 4);
+        callback(true, true, 4, true);
     }
     void unlike(const std::string&, uint64_t, const LikeCallback& callback) override
     {
-        callback(true, true, 3);
+        callback(true, true, 3, false);
     }
     void summary(const std::string&, uint64_t userId, const SummaryCallback& callback) override
     {

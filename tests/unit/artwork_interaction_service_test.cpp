@@ -40,12 +40,12 @@ class RecordingDAO : public ArtworkInteractionDAO
 public:
     RecordingDAO()
         : ArtworkInteractionDAO(0), likeCalls(0), commentCalls(0), listCalls(0),
-          lastLimit(0), duplicateLike(false) {}
+          lastLimit(0), duplicateLike(false), likedResult(true) {}
 
     void like(const std::string&, uint64_t, const LikeCallback& callback) override
     {
         ++likeCalls;
-        callback(true, !duplicateLike, 1);
+        callback(true, !duplicateLike, 1, likedResult);
     }
 
     void createComment(const std::string&, uint64_t, const std::string&,
@@ -68,6 +68,7 @@ public:
     int listCalls;
     uint32_t lastLimit;
     bool duplicateLike;
+    bool likedResult;
 };
 
 class DelayedSessionStore : public ar::SessionStore
@@ -100,7 +101,7 @@ public:
 
     void complete()
     {
-        pending(true, true, 1);
+        pending(true, true, 1, true);
     }
 
     LikeCallback pending;
@@ -122,7 +123,7 @@ public:
             std::unique_lock<std::mutex> lock(mutex);
             condition.wait(lock, [this] { return released; });
         }
-        callback(true, true, 1);
+        callback(true, true, 1, true);
     }
 
     void waitUntilEntered()
@@ -222,6 +223,23 @@ void testDuplicateLikeIsIdempotent()
     CHECK(result.liked);
     CHECK(result.likeCount == 1);
     CHECK(dao.likeCalls == 1);
+}
+
+void testLikeUsesPersistedLikedState()
+{
+    std::unique_ptr<ar::ExhibitionCatalog> catalog = loadCatalog();
+    RecordingSessionStore store;
+    ar::SessionService sessions(&store);
+    RecordingDAO dao;
+    dao.likedResult = false;
+    ar::ArtworkInteractionService service(catalog.get(), &sessions, &dao);
+    ar::ArtworkInteractionResult result;
+
+    service.like("valid-token", knownArtworkId(*catalog),
+                 [&result](const ar::ArtworkInteractionResult& value) { result = value; });
+
+    CHECK(result.status == ar::ArtworkInteractionResult::kOk);
+    CHECK(!result.liked);
 }
 
 void testInactiveSessionCannotReadPersonalStateOrWriteArtwork()
@@ -422,6 +440,7 @@ int main()
     testUnknownArtworkWinsBeforeAuthentication();
     testAnonymousLikeIsUnauthorized();
     testDuplicateLikeIsIdempotent();
+    testLikeUsesPersistedLikedState();
     testInactiveSessionCannotReadPersonalStateOrWriteArtwork();
     testCommentRejectsBlankAndOversizedBytes();
     testCommentRejectsUnicodeWhitespaceAndInvalidUtf8();

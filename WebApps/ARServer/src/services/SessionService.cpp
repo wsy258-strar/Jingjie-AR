@@ -41,4 +41,12 @@ void SessionService::exit(const std::string& token, const SessionStore::BoolCall
     });
 }
 
+void SessionService::logout(const std::string& token, const LogoutCallback& completion)
+{
+    if (!store_ || token.empty()) { completion(kLogoutUnavailable); return; }
+    store_->revoke(token, [completion](bool ok) {
+        completion(ok ? kLogoutOk : kLogoutUnavailable);
+    });
+}
+
 } // namespace ar

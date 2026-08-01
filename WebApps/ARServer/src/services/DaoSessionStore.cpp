@@ -21,4 +21,10 @@ void DaoSessionStore::exit(uint64_t sessionId, const BoolCallback& callback)
     else callback(false);
 }
 
+void DaoSessionStore::revoke(const std::string& token, const BoolCallback& callback)
+{
+    if (dao_) dao_->revokeSession(token, callback);
+    else callback(false);
+}
+
 } // namespace ar

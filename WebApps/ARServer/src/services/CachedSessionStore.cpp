@@ -26,6 +26,16 @@ bool SessionCacheAdapter::put(const Session& session)
 #endif
 }
 
+bool SessionCacheAdapter::putIfAbsent(const Session& session)
+{
+#ifdef HAS_REDIS
+    return cache_ && cache_->putIfAbsent(session);
+#else
+    (void)session;
+    return false;
+#endif
+}
+
 bool SessionCacheAdapter::remove(const std::string& token)
 {
 #ifdef HAS_REDIS
@@ -51,13 +61,27 @@ void CachedSessionStore::find(const std::string& token, const SessionCallback& c
             callback(std::shared_ptr<Session>(new Session(cached)));
             return;
         }
-        durable_->find(token, [this, callback](const std::shared_ptr<Session>& session) {
-            callback(session);
-            if (session && workers_)
-            {
-                const Session copy = *session;
-                workers_->submit([this, copy]() { cache_->put(copy); });
-            }
+        durable_->find(token, [this, token, callback](const std::shared_ptr<Session>& session) {
+            if (!session) { callback(session); return; }
+            const Session copy = *session;
+            if (!workers_->submit([this, token, copy, callback]() {
+                if (copy.status == 0)
+                {
+                    callback(cache_->put(copy)
+                        ? std::shared_ptr<Session>(new Session(copy))
+                        : std::shared_ptr<Session>());
+                    return;
+                }
+                if (cache_->putIfAbsent(copy))
+                {
+                    callback(std::shared_ptr<Session>(new Session(copy)));
+                    return;
+                }
+                Session winner;
+                callback(cache_->get(token, winner)
+                    ? std::shared_ptr<Session>(new Session(winner))
+                    : std::shared_ptr<Session>());
+            })) callback(std::shared_ptr<Session>());
         });
     }))
     {
@@ -81,6 +105,20 @@ void CachedSessionStore::exit(uint64_t sessionId, const BoolCallback& callback)
 {
     if (!durable_) { callback(false); return; }
     durable_->exit(sessionId, callback);
+}
+
+void CachedSessionStore::revoke(const std::string& token, const BoolCallback& callback)
+{
+    if (!durable_ || token.empty()) { callback(false); return; }
+    durable_->revoke(token, [this, token, callback](bool revoked) {
+        if (!revoked) { callback(false); return; }
+        if (!cache_ || !workers_) { callback(true); return; }
+        if (!workers_->submit([this, token, callback]() {
+            const Session tombstone(0, token, 0, std::string(), 0,
+                                    "revoked", "revoked");
+            callback(cache_->put(tombstone));
+        })) callback(false);
+    });
 }
 
 } // namespace ar

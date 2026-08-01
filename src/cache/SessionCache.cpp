@@ -101,6 +101,22 @@ bool SessionCache::put(const Session& session)
     return ok;
 }
 
+bool SessionCache::putIfAbsent(const Session& session)
+{
+    if (!redisPool_) return false;
+    auto conn = redisPool_->borrow();
+    if (!conn) return false;
+    const std::string key = makeKey(session.sessionToken);
+    const std::string value = serialize(session);
+    redisReply* reply = static_cast<redisReply*>(redisCommand(
+        conn.get(), "SET %s %b EX %d NX", key.c_str(),
+        value.data(), value.size(), kTtlSeconds));
+    if (!reply) return false;
+    const bool inserted = reply->type == REDIS_REPLY_STATUS;
+    freeReplyObject(reply);
+    return inserted;
+}
+
 bool SessionCache::refresh(const std::string& token)
 {
     if (!redisPool_)

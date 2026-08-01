@@ -107,6 +107,9 @@ int main()
                                     "user-token"), "user-token");
     expectAllowed(&auth, apiRequest(HttpRequest::kPost, "/api/artworks/artwork-a/comments",
                                     "user-token"), "user-token");
+    expectAllowed(&auth, apiRequest(HttpRequest::kPost, "/api/auth/logout",
+                                    "user-token"), "user-token");
+    expectDenied(&auth, apiRequest(HttpRequest::kPost, "/api/auth/logout"));
     HttpRequest staticRequest;
     staticRequest.setPath("/index.html");
     HttpResponse staticResponse(false);

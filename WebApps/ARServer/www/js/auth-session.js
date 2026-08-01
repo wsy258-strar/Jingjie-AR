@@ -49,6 +49,16 @@ export class AuthSession {
     if (this.storage) this.storage.removeItem(USER_TOKEN_KEY);
   }
 
+  async logout() {
+    if (!this.token()) return true;
+    if (!this.client) {
+      throw new ApiError(503, "AUTH_SERVICE_UNAVAILABLE", "认证服务不可用", "");
+    }
+    await this.client.request("/api/auth/logout", { method: "POST", user: true });
+    this.clear();
+    return true;
+  }
+
   token() {
     return this.storage ? this.storage.getItem(USER_TOKEN_KEY) || "" : "";
   }

@@ -144,7 +144,7 @@ int main()
 
     std::unique_ptr<TaskWorkerPool> visitorWorkers(
         new TaskWorkerPool(config.cacheWorkers, 128));
-    ar::AuthHandler authHandler(&authService);
+    ar::AuthHandler authHandler(&authService, &sessionService);
     ar::SceneHandlers sceneHandlers(catalog.get());
     ar::ArtworkInteractionHandlers artworkHandlers(&artworkService);
     ar::VisitorHandlers visitorHandlers(

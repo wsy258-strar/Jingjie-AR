@@ -16,6 +16,7 @@ public:
 
     bool get(const std::string& token, Session& session);
     bool put(const Session& session);
+    bool putIfAbsent(const Session& session);
     bool refresh(const std::string& token);
     bool remove(const std::string& token);
 

@@ -6,6 +6,7 @@
 #include <cstring>
 #include <memory>
 #include <mysql/mysql.h>
+#include <mysql/mysqld_error.h>
 
 namespace {
 
@@ -60,14 +61,15 @@ bool querySummary(MYSQL* connection, const std::string& artworkId, uint64_t user
     return ok;
 }
 
-void changeLike(DBWorkerPool* pool, const char* sql, const std::string& artworkId,
-                uint64_t userId, const ArtworkInteractionDAO::LikeCallback& callback)
+void changeLike(DBWorkerPool* pool, const char* sql, bool duplicateIsSuccess,
+                const std::string& artworkId, uint64_t userId,
+                const ArtworkInteractionDAO::LikeCallback& callback)
 {
     if (!pool || !pool->submit(
-        [sql, artworkId, userId, callback](std::shared_ptr<MYSQL> connection) {
+        [sql, duplicateIsSuccess, artworkId, userId, callback](std::shared_ptr<MYSQL> connection) {
             if (!connection)
             {
-                if (callback) callback(false, false, 0);
+                if (callback) callback(false, false, 0, false);
                 return;
             }
             MYSQL_STMT* statement = mysql_stmt_init(connection.get());
@@ -84,17 +86,24 @@ void changeLike(DBWorkerPool* pool, const char* sql, const std::string& artworkI
             parameters[1].buffer = &user;
             parameters[1].is_unsigned = 1;
             if (ok) ok = mysql_stmt_bind_param(statement, parameters) == 0;
-            if (ok) ok = mysql_stmt_execute(statement) == 0;
-            const bool changed = ok && mysql_stmt_affected_rows(statement) > 0;
+            bool executed = false;
+            if (ok && mysql_stmt_execute(statement) == 0)
+                executed = true;
+            else if (ok)
+            {
+                const unsigned int error = mysql_stmt_errno(statement);
+                ok = duplicateIsSuccess && error == ER_DUP_ENTRY;
+            }
+            const bool changed = ok && executed && mysql_stmt_affected_rows(statement) > 0;
             if (statement) mysql_stmt_close(statement);
 
             uint64_t count = 0;
             bool liked = false;
             if (ok) ok = querySummary(connection.get(), artworkId, userId, &count, &liked);
-            if (callback) callback(ok, changed, ok ? count : 0);
+            if (callback) callback(ok, changed, ok ? count : 0, ok && liked);
         }))
     {
-        if (callback) callback(false, false, 0);
+        if (callback) callback(false, false, 0, false);
     }
 }
 
@@ -104,7 +113,7 @@ void ArtworkInteractionDAO::like(const std::string& artworkId, uint64_t userId,
                                  const LikeCallback& callback)
 {
     changeLike(dbPool_,
-               "INSERT IGNORE INTO artwork_likes (artwork_id, user_id) VALUES (?, ?)",
+               "INSERT INTO artwork_likes (artwork_id, user_id) VALUES (?, ?)", true,
                artworkId, userId, callback);
 }
 
@@ -112,7 +121,7 @@ void ArtworkInteractionDAO::unlike(const std::string& artworkId, uint64_t userId
                                    const LikeCallback& callback)
 {
     changeLike(dbPool_,
-               "DELETE FROM artwork_likes WHERE artwork_id = ? AND user_id = ?",
+               "DELETE FROM artwork_likes WHERE artwork_id = ? AND user_id = ?", false,
                artworkId, userId, callback);
 }
 

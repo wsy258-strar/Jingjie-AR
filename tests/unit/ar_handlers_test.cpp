@@ -66,6 +66,7 @@ public:
     { callback(std::shared_ptr<Session>(new Session(9, "token", 7, "scene-a", 0))); }
     void enter(uint64_t, const std::string&, const BoolCallback& callback) override { callback(true); }
     void exit(uint64_t, const BoolCallback& callback) override { callback(true); }
+    void revoke(const std::string&, const BoolCallback& callback) override { callback(true); }
 };
 
 class MissingSessionStore : public ar::SessionStore
@@ -77,6 +78,34 @@ public:
     void exit(uint64_t, const BoolCallback& callback) override { callback(false); }
 };
 
+class LogoutSessionStore : public ar::SessionStore
+{
+public:
+    explicit LogoutSessionStore(bool loseExitRace = false)
+        : status(1), exitCalls(0), loseExitRace_(loseExitRace) {}
+    void find(const std::string&, const SessionCallback& callback) override
+    { callback(std::shared_ptr<Session>(new Session(12, "logout-token", 7, "", status))); }
+    void enter(uint64_t, const std::string&, const BoolCallback& callback) override
+    { callback(false); }
+    void exit(uint64_t, const BoolCallback& callback) override
+    {
+        ++exitCalls;
+        status = 0;
+        callback(!loseExitRace_);
+    }
+    void revoke(const std::string&, const BoolCallback& callback) override
+    {
+        ++exitCalls;
+        if (loseExitRace_) { callback(false); return; }
+        status = 0;
+        callback(true);
+    }
+    int status;
+    int exitCalls;
+private:
+    bool loseExitRace_;
+};
+
 int main()
 {
     std::string username;
@@ -86,6 +115,42 @@ int main()
     CHECK(ar::AuthHandler::credentials(bodyCredentials, &username, &password));
     CHECK(username == "alice");
     CHECK(password == "secret");
+    HttpRequest wrongContentType;
+    wrongContentType.setBody("{\"username\":\"alice\",\"password\":\"secret\"}");
+    wrongContentType.addHeader("Content-Type", "text/plain");
+    HttpResponse wrongContentTypeResponse(false);
+    CHECK(!ar::AuthHandler::validate(wrongContentType, &wrongContentTypeResponse));
+    CHECK(wrongContentTypeResponse.statusCode() == HttpResponse::k400BadRequest);
+    HttpRequest mixedCaseContentType;
+    mixedCaseContentType.setBody("{\"username\":\"alice\",\"password\":\"secret\"}");
+    mixedCaseContentType.addHeader("Content-Type", "Application/JSON; Charset=UTF-8");
+    HttpResponse mixedCaseContentTypeResponse(false);
+    CHECK(ar::AuthHandler::validate(mixedCaseContentType, &mixedCaseContentTypeResponse));
+    HttpRequest malformedContentType;
+    malformedContentType.setBody("{\"username\":\"alice\",\"password\":\"secret\"}");
+    malformedContentType.addHeader("Content-Type", "application/json;garbage");
+    HttpResponse malformedContentTypeResponse(false);
+    CHECK(!ar::AuthHandler::validate(malformedContentType, &malformedContentTypeResponse));
+    HttpRequest wrongJsonTypes;
+    wrongJsonTypes.setBody("{\"username\":7,\"password\":true}");
+    wrongJsonTypes.addHeader("Content-Type", "application/json");
+    HttpResponse wrongJsonTypesResponse(false);
+    CHECK(!ar::AuthHandler::validate(wrongJsonTypes, &wrongJsonTypesResponse));
+    CHECK(wrongJsonTypesResponse.statusCode() == HttpResponse::k400BadRequest);
+    HttpRequest oversizedUsername;
+    oversizedUsername.setBody("{\"username\":\"" + std::string(65, 'u') +
+                              "\",\"password\":\"secret\"}");
+    oversizedUsername.addHeader("Content-Type", "application/json; charset=utf-8");
+    HttpResponse oversizedUsernameResponse(false);
+    CHECK(!ar::AuthHandler::validate(oversizedUsername, &oversizedUsernameResponse));
+    CHECK(oversizedUsernameResponse.statusCode() == HttpResponse::k400BadRequest);
+    HttpRequest oversizedPassword;
+    oversizedPassword.setBody("{\"username\":\"alice\",\"password\":\"" +
+                              std::string(129, 'p') + "\"}");
+    oversizedPassword.addHeader("Content-Type", "application/json");
+    HttpResponse oversizedPasswordResponse(false);
+    CHECK(!ar::AuthHandler::validate(oversizedPassword, &oversizedPasswordResponse));
+    CHECK(oversizedPasswordResponse.statusCode() == HttpResponse::k400BadRequest);
     HttpRequest queryCredentials;
     queryCredentials.setQuery("username=alice&password=secret");
     CHECK(ar::AuthHandler::credentials(queryCredentials, &username, &password));
@@ -184,6 +249,7 @@ int main()
           "\"code\":\"INVALID_PASSWORD\",\"requestId\":\"\"}");
     HttpRequest jsonAuthRequest;
     jsonAuthRequest.setBody("{\"username\":\"alice\",\"password\":\"secret\"}");
+    jsonAuthRequest.addHeader("Content-Type", "application/json");
     HttpResponse jsonAuthResponse(false);
     handler.handle(jsonAuthRequest, AsyncResponder([&](HttpResponse response) { jsonAuthResponse = response; }));
     CHECK(jsonAuthResponse.statusCode() == HttpResponse::k200Ok);
@@ -193,6 +259,33 @@ int main()
     CHECK(jsonAuthResponse.body().find("\"token\":") != std::string::npos);
     FakeSessionStore sessionStore;
     ar::SessionService sessionService(&sessionStore);
+    ar::AuthHandler logoutHandler(&service, &sessionService);
+    HttpRequest logoutRequest;
+    logoutRequest.setAttribute("auth.token", "token");
+    HttpResponse logoutResponse(false);
+    logoutHandler.logout(logoutRequest,
+        AsyncResponder([&](HttpResponse response) { logoutResponse = response; }));
+    CHECK(logoutResponse.statusCode() == HttpResponse::k200Ok);
+    LogoutSessionStore logoutStore;
+    ar::SessionService idempotentLogout(&logoutStore);
+    ar::SessionService::LogoutResult firstLogout = ar::SessionService::kLogoutUnavailable;
+    idempotentLogout.logout("logout-token", [&](ar::SessionService::LogoutResult value) {
+        firstLogout = value;
+    });
+    CHECK(firstLogout == ar::SessionService::kLogoutOk);
+    ar::SessionService::LogoutResult repeatedLogout = ar::SessionService::kLogoutUnavailable;
+    idempotentLogout.logout("logout-token", [&](ar::SessionService::LogoutResult value) {
+        repeatedLogout = value;
+    });
+    CHECK(repeatedLogout == ar::SessionService::kLogoutOk);
+    CHECK(logoutStore.exitCalls == 2);
+    LogoutSessionStore racedLogoutStore(true);
+    ar::SessionService racedLogout(&racedLogoutStore);
+    ar::SessionService::LogoutResult raceResult = ar::SessionService::kLogoutUnavailable;
+    racedLogout.logout("logout-token", [&](ar::SessionService::LogoutResult value) {
+        raceResult = value;
+    });
+    CHECK(raceResult == ar::SessionService::kLogoutUnavailable);
     bool found = false;
     sessionService.get("token", [&](const std::shared_ptr<Session>& session) {
         CHECK(session && session->status == 0);

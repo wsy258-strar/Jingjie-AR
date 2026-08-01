@@ -42,9 +42,12 @@ export class VisitorSession {
     this.bootstrapResult = null;
     this.heartbeatTimer = null;
     this.recoveryPromise = null;
+    this.exitPromise = Promise.resolve();
+    this.statisticsPending = false;
     this.lastError = null;
     this.pagehideBound = false;
     this.onPagehide = this.onPagehide.bind(this);
+    this.onPageshow = this.onPageshow.bind(this);
   }
 
   async bootstrap() {
@@ -83,6 +86,7 @@ export class VisitorSession {
     this.available = true;
     this.unavailable = false;
     this.bootstrapResult = result;
+    this.statisticsPending = result.statisticsAvailable === false;
     this.lastError = null;
     return result;
   }
@@ -99,7 +103,7 @@ export class VisitorSession {
     return !(error instanceof ApiError) && !(error && error.name === "AbortError");
   }
 
-  recover() {
+  recover({ markFailureUnavailable = true } = {}) {
     if (this.recoveryPromise) return this.recoveryPromise;
     if (!this.bootstrapRequestId) return Promise.resolve(false);
     const requestId = this.bootstrapRequestId;
@@ -107,7 +111,8 @@ export class VisitorSession {
       .then(() => this.requestBootstrap(requestId))
       .then((result) => Boolean(this.acceptBootstrap(result)))
       .catch((error) => {
-        this.markUnavailable(error);
+        if (markFailureUnavailable) this.markUnavailable(error);
+        else this.lastError = error;
         return false;
       })
       .finally(() => { this.recoveryPromise = null; });
@@ -120,6 +125,8 @@ export class VisitorSession {
       this.available = true;
       this.unavailable = false;
       this.lastError = null;
+      if (this.statisticsPending)
+        return this.recover({ markFailureUnavailable: false });
       return true;
     } catch (error) {
       this.available = false;
@@ -137,6 +144,7 @@ export class VisitorSession {
     this.heartbeatTimer = this.setIntervalImpl(() => { this.heartbeat(); }, HEARTBEAT_INTERVAL_MS);
     if (this.eventTarget && !this.pagehideBound) {
       this.eventTarget.addEventListener("pagehide", this.onPagehide);
+      this.eventTarget.addEventListener("pageshow", this.onPageshow);
       this.pagehideBound = true;
     }
   }
@@ -146,12 +154,8 @@ export class VisitorSession {
       this.clearIntervalImpl(this.heartbeatTimer);
       this.heartbeatTimer = null;
     }
-    if (this.eventTarget && this.pagehideBound) {
-      this.eventTarget.removeEventListener("pagehide", this.onPagehide);
-      this.pagehideBound = false;
-    }
     if (sendExit && this.storage && this.storage.getItem(VISITOR_TOKEN_KEY)) {
-      this.client.request("/api/presence/exit", {
+      this.exitPromise = this.client.request("/api/presence/exit", {
         method: "POST", visitor: true, keepalive: true
       }).catch(() => {});
     }
@@ -159,5 +163,12 @@ export class VisitorSession {
 
   onPagehide() {
     this.stopHeartbeat({ sendExit: true });
+  }
+
+  async onPageshow(event) {
+    if (!event || event.persisted !== true) return;
+    await this.exitPromise;
+    await this.recover({ markFailureUnavailable: false });
+    this.startHeartbeat();
   }
 }

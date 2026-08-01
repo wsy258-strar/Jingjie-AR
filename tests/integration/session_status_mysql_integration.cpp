@@ -67,11 +67,11 @@ std::shared_ptr<Session> find(SessionDAO* dao, const std::string& token)
     return waitFor(&future);
 }
 
-bool end(SessionDAO* dao, uint64_t sessionId)
+bool revoke(SessionDAO* dao, const std::string& token)
 {
     std::promise<bool> promise;
     std::future<bool> future = promise.get_future();
-    dao->endSession(sessionId, [&promise](bool ok) { promise.set_value(ok); });
+    dao->revokeSession(token, [&promise](bool ok) { promise.set_value(ok); });
     return waitFor(&future);
 }
 
@@ -114,9 +114,10 @@ int main()
         CHECK(sessionId != 0);
         const std::shared_ptr<Session> active = find(&dao, token);
         CHECK(active && active->status == 1);
-        CHECK(end(&dao, sessionId));
+        CHECK(revoke(&dao, token));
         const std::shared_ptr<Session> inactive = find(&dao, token);
         CHECK(inactive && inactive->status == 0);
+        CHECK(revoke(&dao, token));
     }
 
     execute(setup.get(), "DELETE FROM sessions WHERE session_token = '" + token + "'");

@@ -471,6 +471,35 @@ void SessionDAO::endSession(uint64_t sessionId,
     }
 }
 
+void SessionDAO::revokeSession(const std::string& token,
+                               const BoolCallback& callback)
+{
+    if (!dbPool_ || token.empty() || !dbPool_->submit(
+        [token, callback](std::shared_ptr<MYSQL> conn) {
+            if (!conn) { callback(false); return; }
+            MYSQL_STMT* stmt = mysql_stmt_init(conn.get());
+            if (!stmt) { callback(false); return; }
+            const char* sql =
+                "UPDATE sessions SET scene_id = '', status = 0 "
+                "WHERE session_token = ? AND status = 1";
+            bool ok = mysql_stmt_prepare(stmt, sql, strlen(sql)) == 0;
+            MYSQL_BIND bind[1];
+            memset(bind, 0, sizeof(bind));
+            unsigned long tokenLength = static_cast<unsigned long>(token.size());
+            bind[0].buffer_type = MYSQL_TYPE_STRING;
+            bind[0].buffer = const_cast<char*>(token.c_str());
+            bind[0].buffer_length = tokenLength;
+            bind[0].length = &tokenLength;
+            if (ok) ok = mysql_stmt_bind_param(stmt, bind) == 0;
+            if (ok) ok = mysql_stmt_execute(stmt) == 0;
+            mysql_stmt_close(stmt);
+            callback(ok);
+        }))
+    {
+        callback(false);
+    }
+}
+
 void SessionDAO::findActiveSessionsByUser(uint64_t userId,
                                            const SessionsCallback& callback)
 {

@@ -101,6 +101,10 @@ public:
     void endSession(uint64_t sessionId,
                     const BoolCallback& callback);
 
+    /// 按 Bearer 令牌幂等撤销会话；SQL 成功即表示撤销完成（含已撤销或不存在）。
+    void revokeSession(const std::string& token,
+                       const BoolCallback& callback);
+
     /// 获取用户的所有活跃会话
     void findActiveSessionsByUser(uint64_t userId,
                                   const SessionsCallback& callback);

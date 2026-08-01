@@ -12,6 +12,7 @@ public:
     void find(const std::string& token, const SessionCallback& callback) override;
     void enter(uint64_t sessionId, const std::string& sceneId, const BoolCallback& callback) override;
     void exit(uint64_t sessionId, const BoolCallback& callback) override;
+    void revoke(const std::string& token, const BoolCallback& callback) override;
 private:
     SessionDAO* dao_;
 };

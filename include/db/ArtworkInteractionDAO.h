@@ -18,7 +18,7 @@ struct ArtworkComment
 class ArtworkInteractionDAO : noncopyable
 {
 public:
-    typedef std::function<void(bool ok, bool changed, uint64_t count)> LikeCallback;
+    typedef std::function<void(bool ok, bool changed, uint64_t count, bool liked)> LikeCallback;
     typedef std::function<void(bool ok, uint64_t id)> CommentCallback;
     typedef std::function<void(bool ok, uint64_t count, bool liked)> SummaryCallback;
     typedef std::function<void(bool ok, const std::vector<ArtworkComment>& comments,

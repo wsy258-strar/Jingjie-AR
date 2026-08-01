@@ -274,7 +274,8 @@ void ArtworkInteractionService::like(const std::string& token, const std::string
             if (callback) callback(result(ArtworkInteractionResult::kUnavailable));
             return;
         }
-        dao->like(artworkId, userId, [callback, lifetime](bool ok, bool, uint64_t count) {
+        dao->like(artworkId, userId, [callback, lifetime](bool ok, bool, uint64_t count,
+                                                          bool liked) {
             if (!callback) return;
             if (!active(lifetime) || !ok)
             {
@@ -283,7 +284,7 @@ void ArtworkInteractionService::like(const std::string& token, const std::string
             }
             ArtworkInteractionResult value;
             value.likeCount = count;
-            value.liked = true;
+            value.liked = liked;
             callback(value);
         });
     });
@@ -302,7 +303,8 @@ void ArtworkInteractionService::unlike(const std::string& token, const std::stri
             if (callback) callback(result(ArtworkInteractionResult::kUnavailable));
             return;
         }
-        dao->unlike(artworkId, userId, [callback, lifetime](bool ok, bool, uint64_t count) {
+        dao->unlike(artworkId, userId, [callback, lifetime](bool ok, bool, uint64_t count,
+                                                            bool liked) {
             if (!callback) return;
             if (!active(lifetime) || !ok)
             {
@@ -311,7 +313,7 @@ void ArtworkInteractionService::unlike(const std::string& token, const std::stri
             }
             ArtworkInteractionResult value;
             value.likeCount = count;
-            value.liked = false;
+            value.liked = liked;
             callback(value);
         });
     });

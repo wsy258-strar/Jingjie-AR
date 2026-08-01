@@ -20,6 +20,7 @@ struct LikeResult
     bool ok;
     bool changed;
     uint64_t count;
+    bool liked;
 };
 
 struct SummaryResult
@@ -83,9 +84,9 @@ LikeResult like(ArtworkInteractionDAO* dao, const std::string& artworkId, uint64
     std::future<LikeResult> future = promise.get_future();
     std::atomic<int> callbacks(0);
     dao->like(artworkId, userId,
-              [&promise, &callbacks](bool ok, bool changed, uint64_t count) {
+              [&promise, &callbacks](bool ok, bool changed, uint64_t count, bool liked) {
         CHECK(callbacks.fetch_add(1) == 0);
-        LikeResult result = {ok, changed, count};
+        LikeResult result = {ok, changed, count, liked};
         promise.set_value(result);
     });
     LikeResult result = waitFor(&future);
@@ -99,9 +100,9 @@ LikeResult unlike(ArtworkInteractionDAO* dao, const std::string& artworkId, uint
     std::future<LikeResult> future = promise.get_future();
     std::atomic<int> callbacks(0);
     dao->unlike(artworkId, userId,
-                [&promise, &callbacks](bool ok, bool changed, uint64_t count) {
+                [&promise, &callbacks](bool ok, bool changed, uint64_t count, bool liked) {
         CHECK(callbacks.fetch_add(1) == 0);
-        LikeResult result = {ok, changed, count};
+        LikeResult result = {ok, changed, count, liked};
         promise.set_value(result);
     });
     LikeResult result = waitFor(&future);
@@ -189,9 +190,21 @@ int main()
         ArtworkInteractionDAO dao(&workers);
 
         const LikeResult firstLike = like(&dao, artworkId, userId);
-        CHECK(firstLike.ok && firstLike.changed && firstLike.count == 1);
+        CHECK(firstLike.ok && firstLike.changed && firstLike.count == 1 && firstLike.liked);
         const LikeResult duplicateLike = like(&dao, artworkId, userId);
-        CHECK(duplicateLike.ok && !duplicateLike.changed && duplicateLike.count == 1);
+        CHECK(duplicateLike.ok && !duplicateLike.changed && duplicateLike.count == 1 &&
+              duplicateLike.liked);
+
+        execute(setup.get(), "DROP TRIGGER IF EXISTS reject_artwork_like_test");
+        execute(setup.get(),
+                "CREATE TRIGGER reject_artwork_like_test BEFORE INSERT ON artwork_likes "
+                "FOR EACH ROW BEGIN IF NEW.artwork_id = 'forced-db-error' THEN "
+                "SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'forced non-duplicate error'; "
+                "END IF; END");
+        const LikeResult failedLike = like(&dao, "forced-db-error", userId);
+        CHECK(!failedLike.ok && !failedLike.changed && failedLike.count == 0 &&
+              !failedLike.liked);
+        execute(setup.get(), "DROP TRIGGER reject_artwork_like_test");
 
         const SummaryResult authenticated = summary(&dao, artworkId, userId);
         CHECK(authenticated.ok && authenticated.count == 1 && authenticated.liked);
@@ -217,7 +230,7 @@ int main()
         CHECK(secondPage.comments[0].username == username);
 
         const LikeResult removed = unlike(&dao, artworkId, userId);
-        CHECK(removed.ok && removed.changed && removed.count == 0);
+        CHECK(removed.ok && removed.changed && removed.count == 0 && !removed.liked);
         const SummaryResult afterUnlike = summary(&dao, artworkId, userId);
         CHECK(afterUnlike.ok && afterUnlike.count == 0 && !afterUnlike.liked);
     }

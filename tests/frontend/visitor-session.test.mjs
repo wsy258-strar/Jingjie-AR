@@ -200,3 +200,141 @@ test("并发 401 心跳只用页面原 requestId 发起一次身份恢复", asyn
   assert.equal(session.available, true);
   assert.equal(session.unavailable, false);
 });
+
+test("统计暂不可用时保存令牌并由并发心跳用同一 requestId 单次补记", async () => {
+  const storage = storageWith();
+  const bootstrapIds = [];
+  let resolveRecovery;
+  const recoveryGate = new Promise((resolve) => { resolveRecovery = resolve; });
+  const client = {
+    async request(path, options) {
+      if (path === "/api/visitors/session") {
+        bootstrapIds.push(options.body.bootstrapRequestId);
+        if (bootstrapIds.length === 1) {
+          return { visitorToken: "visitor-initial", statisticsAvailable: false };
+        }
+        await recoveryGate;
+        return { visitorToken: "visitor-recovered", statisticsAvailable: true, totalViews: 9 };
+      }
+      assert.equal(path, "/api/presence/heartbeat");
+      return {};
+    }
+  };
+  const session = new VisitorSession({
+    client, storage, randomUUID: () => "page-statistics-request"
+  });
+
+  const initial = await session.bootstrap();
+  assert.equal(initial.statisticsAvailable, false);
+  assert.equal(storage.getItem("ar.visitorToken"), "visitor-initial");
+  const first = session.heartbeat();
+  const second = session.heartbeat();
+  await Promise.resolve();
+  resolveRecovery();
+  await Promise.all([first, second]);
+
+  assert.deepEqual(bootstrapIds, ["page-statistics-request", "page-statistics-request"]);
+  assert.equal(storage.getItem("ar.visitorToken"), "visitor-recovered");
+  assert.equal(session.bootstrapResult.statisticsAvailable, true);
+});
+
+test("统计持续不可用时每轮心跳最多补记一次且保留待补记状态", async () => {
+  let bootstrapCalls = 0;
+  const session = new VisitorSession({
+    client: {
+      async request(path) {
+        if (path === "/api/visitors/session") {
+          bootstrapCalls += 1;
+          return { visitorToken: "visitor-1", statisticsAvailable: false };
+        }
+        return {};
+      }
+    },
+    storage: storageWith(),
+    randomUUID: () => "persistent-statistics-request"
+  });
+
+  await session.bootstrap();
+  await session.heartbeat();
+  await session.heartbeat();
+  assert.equal(bootstrapCalls, 3);
+  assert.equal(session.statisticsPending, true);
+});
+
+test("bfcache 恢复使用原 requestId 恢复在线且只重建一个定时器", async () => {
+  const listeners = new Map();
+  const bootstrapIds = [];
+  let intervals = 0;
+  let clears = 0;
+  const eventTarget = {
+    addEventListener(type, listener) { listeners.set(type, listener); },
+    removeEventListener(type) { listeners.delete(type); }
+  };
+  const session = new VisitorSession({
+    client: {
+      async request(path, options) {
+        if (path === "/api/visitors/session") {
+          bootstrapIds.push(options.body.bootstrapRequestId);
+          return { visitorToken: "visitor-1", statisticsAvailable: true };
+        }
+        return {};
+      }
+    },
+    storage: storageWith(),
+    randomUUID: () => "bfcache-page-request",
+    eventTarget,
+    setIntervalImpl() { intervals += 1; return intervals; },
+    clearIntervalImpl() { clears += 1; }
+  });
+
+  await session.bootstrap();
+  session.startHeartbeat();
+  listeners.get("pagehide")({ persisted: true });
+  await Promise.resolve();
+  assert.equal(clears, 1);
+  assert.ok(listeners.has("pageshow"));
+  await listeners.get("pageshow")({ persisted: true });
+  await listeners.get("pageshow")({ persisted: true });
+
+  assert.deepEqual(bootstrapIds, ["bfcache-page-request", "bfcache-page-request", "bfcache-page-request"]);
+  assert.equal(intervals, 2);
+  assert.ok(listeners.has("pagehide"));
+  assert.ok(listeners.has("pageshow"));
+});
+
+test("bfcache 恢复等待迟到 exit 完成后才重新登记在线", async () => {
+  const listeners = new Map();
+  const calls = [];
+  let resolveExit;
+  const exitGate = new Promise((resolve) => { resolveExit = resolve; });
+  const session = new VisitorSession({
+    client: {
+      async request(path) {
+        calls.push(path);
+        if (path === "/api/presence/exit") await exitGate;
+        return path === "/api/visitors/session"
+          ? { visitorToken: "visitor-1", statisticsAvailable: true }
+          : {};
+      }
+    },
+    storage: storageWith({ "ar.visitorToken": "visitor-1" }),
+    randomUUID: () => "bfcache-order-request",
+    eventTarget: {
+      addEventListener(type, listener) { listeners.set(type, listener); },
+      removeEventListener(type) { listeners.delete(type); }
+    },
+    setIntervalImpl() { return 1; },
+    clearIntervalImpl() {}
+  });
+  await session.bootstrap();
+  session.startHeartbeat();
+  listeners.get("pagehide")({ persisted: true });
+  const restoring = listeners.get("pageshow")({ persisted: true });
+  await Promise.resolve();
+  assert.deepEqual(calls, ["/api/visitors/session", "/api/presence/exit"]);
+  resolveExit();
+  await restoring;
+  assert.deepEqual(calls, [
+    "/api/visitors/session", "/api/presence/exit", "/api/visitors/session"
+  ]);
+});

@@ -45,12 +45,16 @@ void testUnavailableWorkerPoolCompletesEveryDaoCallbackWithDefault()
         CHECK(!ok);
         ++callbackCount;
     });
+    dao.revokeSession("token", [&callbackCount](bool ok) {
+        CHECK(!ok);
+        ++callbackCount;
+    });
     dao.findActiveSessionsByUser(1, [&callbackCount](std::vector<Session> sessions) {
         CHECK(sessions.empty());
         ++callbackCount;
     });
 
-    CHECK(callbackCount == 9);
+    CHECK(callbackCount == 10);
 }
 
 } // namespace

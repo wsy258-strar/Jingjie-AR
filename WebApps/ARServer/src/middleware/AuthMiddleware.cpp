@@ -64,7 +64,8 @@ bool AuthMiddleware::before(HttpRequest& request, HttpResponse& response)
     }
 
     if (!token.empty() &&
-        ((request.method() == HttpRequest::kPost &&
+        ((request.method() == HttpRequest::kPost && path == "/api/auth/logout") ||
+         (request.method() == HttpRequest::kPost &&
           (artworkRoute(path, "/likes") || artworkRoute(path, "/comments"))) ||
          (request.method() == HttpRequest::kDelete && artworkRoute(path, "/likes"))))
         return true;
