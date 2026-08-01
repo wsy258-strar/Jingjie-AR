@@ -5,13 +5,21 @@ function browserEventTarget() {
   return typeof globalThis.addEventListener === "function" ? globalThis : null;
 }
 
+function browserSetInterval(callback, delay) {
+  return globalThis.setInterval(callback, delay);
+}
+
+function browserClearInterval(timer) {
+  return globalThis.clearInterval(timer);
+}
+
 export class MuseumLifecycle {
   constructor({
     visitor,
     refreshCounters = null,
     eventTarget = browserEventTarget(),
-    setIntervalImpl = globalThis.setInterval,
-    clearIntervalImpl = globalThis.clearInterval
+    setIntervalImpl = typeof globalThis.setInterval === "function" ? browserSetInterval : null,
+    clearIntervalImpl = typeof globalThis.clearInterval === "function" ? browserClearInterval : null
   } = {}) {
     if (!visitor) throw new Error("MuseumLifecycle requires visitor session");
     this.visitor = visitor;
@@ -50,7 +58,9 @@ export class MuseumLifecycle {
 
   stopCounterPolling() {
     if (this.counterTimer === null) return;
-    this.clearIntervalImpl(this.counterTimer);
+    if (typeof this.clearIntervalImpl === "function") {
+      this.clearIntervalImpl(this.counterTimer);
+    }
     this.counterTimer = null;
   }
 

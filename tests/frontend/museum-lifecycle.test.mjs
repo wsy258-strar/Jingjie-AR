@@ -105,3 +105,30 @@ test("bfcache 恢复未完成时再次离开会使迟到的计数恢复失效", 
   assert.equal(intervals, 1);
   assert.equal(refreshes, 0);
 });
+
+test("默认统计定时器以 globalThis 作为宿主接收者", () => {
+  const originalSetInterval = globalThis.setInterval;
+  const originalClearInterval = globalThis.clearInterval;
+  try {
+    globalThis.setInterval = function (callback, delay) {
+      assert.equal(this, globalThis);
+      assert.equal(typeof callback, "function");
+      assert.equal(delay, 15 * 1000);
+      return 52;
+    };
+    globalThis.clearInterval = function (timer) {
+      assert.equal(this, globalThis);
+      assert.equal(timer, 52);
+    };
+    const lifecycle = new MuseumLifecycle({
+      visitor: { bootstrap: async () => null },
+      eventTarget: null
+    });
+    lifecycle.startCounterPolling();
+    lifecycle.stopCounterPolling();
+    assert.equal(lifecycle.counterTimer, null);
+  } finally {
+    globalThis.setInterval = originalSetInterval;
+    globalThis.clearInterval = originalClearInterval;
+  }
+});

@@ -470,3 +470,33 @@ test("连续 bfcache 恢复会在最新 exit 后重新登记在线而不复用�
   assert.equal(presenceOnline, true);
   assert.notEqual(session.heartbeatTimer, null);
 });
+
+test("默认心跳定时器以 globalThis 作为宿主接收者", () => {
+  const originalSetInterval = globalThis.setInterval;
+  const originalClearInterval = globalThis.clearInterval;
+  let callback;
+  try {
+    globalThis.setInterval = function (received, delay) {
+      assert.equal(this, globalThis);
+      assert.equal(delay, 30 * 1000);
+      callback = received;
+      return 41;
+    };
+    globalThis.clearInterval = function (timer) {
+      assert.equal(this, globalThis);
+      assert.equal(timer, 41);
+    };
+    const session = new VisitorSession({
+      client: { request: async () => ({}) },
+      storage: storageWith(),
+      eventTarget: null
+    });
+    session.startHeartbeat();
+    assert.equal(typeof callback, "function");
+    session.stopHeartbeat({ sendExit: false });
+    assert.equal(session.heartbeatTimer, null);
+  } finally {
+    globalThis.setInterval = originalSetInterval;
+    globalThis.clearInterval = originalClearInterval;
+  }
+});

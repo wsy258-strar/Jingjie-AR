@@ -7,6 +7,14 @@ function browserEventTarget() {
   return typeof globalThis.addEventListener === "function" ? globalThis : null;
 }
 
+function browserSetInterval(callback, delay) {
+  return globalThis.setInterval(callback, delay);
+}
+
+function browserClearInterval(timer) {
+  return globalThis.clearInterval(timer);
+}
+
 function browserRandomUUID() {
   if (!globalThis.crypto || typeof globalThis.crypto.randomUUID !== "function") {
     throw new Error("crypto.randomUUID is unavailable");
@@ -24,8 +32,8 @@ export class VisitorSession {
     storage = typeof globalThis.sessionStorage === "undefined" ? null : globalThis.sessionStorage,
     randomUUID = browserRandomUUID,
     eventTarget = browserEventTarget(),
-    setIntervalImpl = globalThis.setInterval,
-    clearIntervalImpl = globalThis.clearInterval,
+    setIntervalImpl = typeof globalThis.setInterval === "function" ? browserSetInterval : null,
+    clearIntervalImpl = typeof globalThis.clearInterval === "function" ? browserClearInterval : null,
     retryDelay = defaultRetryDelay
   } = {}) {
     if (!client) throw new Error("VisitorSession requires an ApiClient");
@@ -165,7 +173,9 @@ export class VisitorSession {
 
   stopHeartbeat({ sendExit = true } = {}) {
     if (this.heartbeatTimer !== null) {
-      this.clearIntervalImpl(this.heartbeatTimer);
+      if (typeof this.clearIntervalImpl === "function") {
+        this.clearIntervalImpl(this.heartbeatTimer);
+      }
       this.heartbeatTimer = null;
     }
     if (sendExit && this.storage && this.storage.getItem(VISITOR_TOKEN_KEY)) {
