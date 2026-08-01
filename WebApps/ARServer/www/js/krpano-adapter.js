@@ -18,14 +18,38 @@ const VIEW_ACTIONS = Object.freeze({
     "set(view.stereographic,true); tween(view.fisheye,1.0,0.45); tween(view.vlookat,0,0.45); tween(view.fov,150,0.45);"
 });
 
+const REDUCED_MOTION_VIEW_ACTIONS = Object.freeze({
+  normal: ({ hlookat, vlookat, fov }) =>
+    `set(view.stereographic,false); set(view.fisheye,0.0); lookat(${hlookat},${vlookat},${fov});`,
+  planet: () =>
+    "set(view.stereographic,true); set(view.fisheye,1.0); set(view.vlookat,90); set(view.fov,150);",
+  fisheye: () =>
+    "set(view.stereographic,false); set(view.fisheye,1.0); set(view.fov,120);",
+  crystal: () =>
+    "set(view.stereographic,true); set(view.fisheye,1.0); set(view.vlookat,0); set(view.fov,150);"
+});
+
 function isSupportedViewMode(mode) {
   return Object.hasOwn(VIEW_ACTIONS, mode);
 }
 
 let hotspotBridge = null;
+let webVrBridge = null;
+
+const WEBVR_EVENTS = Object.freeze({
+  0: "unavailable",
+  1: "available",
+  2: "entered",
+  3: "exited"
+});
 
 globalThis.JingjieARHotspotBridge = function (index) {
   if (hotspotBridge) hotspotBridge(Number(index));
+};
+
+globalThis.JingjieARWebVrBridge = function (eventCode) {
+  const event = WEBVR_EVENTS[Number(eventCode)];
+  if (event && webVrBridge) webVrBridge(event);
 };
 
 export function xmlEscape(value) {
@@ -83,7 +107,11 @@ export function buildSceneXml(scene, viewOverride = null, viewMode = VIEW_MODES.
   return [
     '<krpano version="1.19">',
     '<plugin name="webvr" devices="html5" keep="true"',
-    ' url="/assets/krp/plugins/webvr.js" mobilevr_support="true" />',
+    ' url="/assets/krp/plugins/webvr.js" mobilevr_support="true"',
+    ' onavailable="js(JingjieARWebVrBridge(1));"',
+    ' onunavailable="js(JingjieARWebVrBridge(0));"',
+    ' onentervr="js(JingjieARWebVrBridge(2));"',
+    ' onexitvr="js(JingjieARWebVrBridge(3));" />',
     '<preview url="', xmlEscape(scene.previewUrl), '" />',
     '<image><cube url="', xmlEscape(scene.cubeUrl), '" /></image>',
     '<view hlookat="', view.hlookat, '" vlookat="', view.vlookat,
@@ -100,7 +128,14 @@ function krpanoActionString(xml) {
 }
 
 export class KrpanoAdapter {
-  constructor({ targetId, onHotspot } = {}) {
+  constructor({
+    targetId,
+    onHotspot,
+    reducedMotion = false,
+    vrEnterTimeoutMs = 5000,
+    setTimeoutFn = (callback, delay) => globalThis.setTimeout(callback, delay),
+    clearTimeoutFn = (timerId) => globalThis.clearTimeout(timerId)
+  } = {}) {
     if (!targetId) throw new Error("KrpanoAdapter requires targetId");
     this.targetId = targetId;
     this.onHotspot = typeof onHotspot === "function" ? onHotspot : () => {};
@@ -111,6 +146,13 @@ export class KrpanoAdapter {
     this.currentHotspots = [];
     this.viewMode = VIEW_MODES.NORMAL;
     this.normalView = null;
+    this.reducedMotion = Boolean(reducedMotion);
+    this.vrState = "unknown";
+    this.vrEnterRequest = null;
+    this.vrEnterTimeoutMs = Number.isFinite(Number(vrEnterTimeoutMs)) && Number(vrEnterTimeoutMs) > 0
+      ? Number(vrEnterTimeoutMs) : 5000;
+    this.setTimeoutFn = setTimeoutFn;
+    this.clearTimeoutFn = clearTimeoutFn;
   }
 
   initialize() {
@@ -142,6 +184,7 @@ export class KrpanoAdapter {
               const hotspot = this.currentHotspots[index];
               if (hotspot) this.onHotspot(hotspot);
             };
+            webVrBridge = (event) => this.handleVrEvent(event);
             resolve(player);
           },
           onerror: fail
@@ -165,9 +208,15 @@ export class KrpanoAdapter {
 
   applyViewMode(mode) {
     if (!isSupportedViewMode(mode)) throw new Error(`不支持的视角模式：${mode}`);
-    const actionFactory = VIEW_ACTIONS[mode];
-    const fallback = this.normalView || this.getView() || { hlookat: 0, vlookat: 0, fov: 90 };
-    this.player.call(actionFactory(fallback));
+    const actionFactory = (this.reducedMotion ? REDUCED_MOTION_VIEW_ACTIONS : VIEW_ACTIONS)[mode];
+    const currentView = this.getView() || { hlookat: 0, vlookat: 0, fov: 90 };
+    const targetView = mode === VIEW_MODES.NORMAL
+      ? {
+          ...currentView,
+          fov: this.normalView ? finiteNumber(this.normalView.fov, currentView.fov) : currentView.fov
+        }
+      : currentView;
+    this.player.call(actionFactory(targetView));
   }
 
   setViewMode(mode) {
@@ -182,16 +231,83 @@ export class KrpanoAdapter {
   }
 
   isVrAvailable() {
-    if (!this.player) return false;
-    const available = this.player.get("webvr.isavailable");
-    return available === true || available === "true";
+    return this.vrState === "available" || this.vrState === "entering" ||
+      this.vrState === "entered";
   }
 
   enterVr() {
+    if (globalThis.isSecureContext === false)
+      throw new Error("进入 VR 需要 HTTPS 安全连接");
     if (!this.player) throw new Error("全景播放器尚未就绪");
-    if (!this.isVrAvailable()) throw new Error("当前设备或浏览器不支持 VR");
-    this.player.call("webvr.enterVR();");
-    return true;
+    if (this.vrState === "unknown")
+      throw new Error("VR 插件尚未完成可用性检测，请稍后重试");
+    if (this.vrState === "unavailable")
+      throw new Error("当前设备或浏览器不支持 VR");
+    if (this.vrState === "entering") return this.vrEnterRequest.promise;
+    if (this.vrState === "entered") return Promise.resolve(true);
+
+    let resolveRequest;
+    let rejectRequest;
+    const promise = new Promise((resolve, reject) => {
+      resolveRequest = resolve;
+      rejectRequest = reject;
+    });
+    const request = {
+      promise,
+      resolve: resolveRequest,
+      reject: rejectRequest,
+      timerId: null
+    };
+    this.vrEnterRequest = request;
+    this.vrState = "entering";
+    try {
+      this.player.call("webvr.enterVR();");
+      if (this.vrEnterRequest === request) {
+        request.timerId = this.setTimeoutFn(() => {
+          this.finishVrEnter(new Error("进入 VR 超时，请重试"), "available");
+        }, this.vrEnterTimeoutMs);
+      }
+    } catch (error) {
+      const detail = error instanceof Error && error.message ? `：${error.message}` : "";
+      this.finishVrEnter(new Error(`进入 VR 失败${detail}`), "available");
+    }
+    return promise;
+  }
+
+  finishVrEnter(error, nextState) {
+    const request = this.vrEnterRequest;
+    this.vrEnterRequest = null;
+    this.vrState = nextState;
+    if (!request) return;
+    if (request.timerId !== null) this.clearTimeoutFn(request.timerId);
+    if (error) request.reject(error);
+    else request.resolve(true);
+  }
+
+  handleVrEvent(event) {
+    if (event === "available") {
+      if (this.vrState !== "entering" && this.vrState !== "entered")
+        this.vrState = "available";
+      return;
+    }
+    if (event === "unavailable") {
+      if (this.vrEnterRequest) {
+        this.finishVrEnter(new Error("当前设备或浏览器不支持 VR"), "unavailable");
+      } else {
+        this.vrState = "unavailable";
+      }
+      return;
+    }
+    if (event === "entered") {
+      if (this.vrEnterRequest) this.finishVrEnter(null, "entered");
+      else this.vrState = "entered";
+      return;
+    }
+    if (event === "exited") {
+      if (this.vrEnterRequest)
+        this.finishVrEnter(new Error("VR 进入已取消，请重试"), "available");
+      else this.vrState = "available";
+    }
   }
 
   invalidate(generation) {

@@ -18,6 +18,7 @@ grep -Fq 'id="artwork-modal"' "$index"
 grep -Fq 'id="login-modal"' "$index"
 grep -Fq 'id="notice"' "$index"
 
+grep -Fq 'id="museum-fullscreen-root"' "$index"
 grep -Fq 'id="museum-shell"' "$index"
 grep -Fq 'id="scene-drawer-toggle"' "$index"
 grep -Fq 'aria-controls="scene-drawer"' "$index"
@@ -33,7 +34,7 @@ grep -Fq 'data-view-mode="planet"' "$index"
 grep -Fq 'data-view-mode="fisheye"' "$index"
 grep -Fq 'data-view-mode="crystal"' "$index"
 grep -Fq 'aria-label="全屏浏览"' "$index"
-grep -Fq 'aria-label="播放讲解"' "$index"
+grep -Fq 'aria-label="当前场景暂无音乐"' "$index"
 grep -Fq 'aria-label="进入 VR"' "$index"
 grep -Fq 'aria-label="视角切换"' "$index"
 grep -Fq '<svg' "$index"
@@ -42,6 +43,38 @@ grep -Fq '<svg' "$index"
 ! grep -Fq '360° PANORAMA' "$index"
 ! grep -Fq '>全屏浏览</button>' "$index"
 ! grep -Fq '>播放讲解</button>' "$index"
+
+python3 - "$index" <<'PY'
+from html.parser import HTMLParser
+from pathlib import Path
+import sys
+
+VOID = {"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param", "source", "track", "wbr"}
+
+class ParentAudit(HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self.stack = []
+        self.parents = {}
+
+    def handle_starttag(self, tag, attrs):
+        node_id = dict(attrs).get("id")
+        if node_id:
+            self.parents[node_id] = next((entry_id for _, entry_id in reversed(self.stack) if entry_id), None)
+        if tag not in VOID:
+            self.stack.append((tag, node_id))
+
+    def handle_endtag(self, tag):
+        while self.stack:
+            open_tag, _ = self.stack.pop()
+            if open_tag == tag:
+                return
+
+audit = ParentAudit()
+audit.feed(Path(sys.argv[1]).read_text(encoding="utf-8"))
+for child in ("museum-shell", "description-modal", "artwork-modal", "login-modal", "notice", "fatal-error"):
+    assert audit.parents.get(child) == "museum-fullscreen-root", (child, audit.parents.get(child))
+PY
 
 ! grep -R -i -E '720yun|api\.map|amap|panoOffline\.js|aframe' \
   "$index" "$root/js" "$root/css"
@@ -63,6 +96,7 @@ grep -Fq 'scene-drawer-toggle' "$app"
 grep -Fq 'view-toggle' "$app"
 grep -Fq 'data-view-mode' "$app"
 grep -Fq 'fullscreenchange' "$app"
+grep -Fq 'element("museum-fullscreen-root")' "$app"
 grep -Fq 'adapter.setViewMode' "$app"
 grep -Fq 'adapter.enterVr' "$app"
 grep -Fq 'pointerdown' "$app"
@@ -71,6 +105,7 @@ grep -Fq 'event.key === "Escape"' "$app"
 ! grep -Fq 'element("scene-title")' "$app"
 ! grep -Fq 'element("scene-count")' "$app"
 
+grep -Fq '.museum-fullscreen-root' "$css"
 grep -Fq '.museum-shell' "$css"
 grep -Fq 'height: 100dvh' "$css"
 grep -Fq '.floating-header' "$css"
@@ -84,10 +119,12 @@ grep -Fq 'grid-template-areas:' "$css"
 grep -Fq 'overflow-x: auto' "$css"
 grep -Fq '@media (max-height: 420px) and (orientation: landscape)' "$css"
 grep -Fq 'grid-template-columns: repeat(4, 38px)' "$css"
+grep -Fq 'max-height: calc(100vh - 10rem)' "$css"
 grep -Fq 'max-height: calc(100dvh - 10rem)' "$css"
 grep -Fq 'overflow-y: auto' "$css"
 grep -Fq '@media (prefers-reduced-motion: reduce)' "$css"
 ! grep -Fq 'grid-template-columns: minmax(0, 1fr) clamp(250px' "$css"
 ! grep -Fq '.catalog-panel' "$css"
+! grep -Fq -- '--panel:' "$css"
 
 printf 'PASS: museum frontend static shell\n'

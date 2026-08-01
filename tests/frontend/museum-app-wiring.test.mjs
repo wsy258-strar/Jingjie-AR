@@ -28,9 +28,14 @@ class FakeEventTarget {
     this.parentNode = null;
   }
 
-  addEventListener(type, listener) {
+  addEventListener(type, listener, options = {}) {
     if (!this.listeners.has(type)) this.listeners.set(type, []);
-    this.listeners.get(type).push(listener);
+    const normalized = typeof options === "boolean" ? { capture: options } : options;
+    this.listeners.get(type).push({
+      listener,
+      capture: Boolean(normalized.capture),
+      passive: Boolean(normalized.passive)
+    });
   }
 
   async dispatch(type, init = {}) {
@@ -39,6 +44,7 @@ class FakeEventTarget {
       type,
       target: this,
       currentTarget: null,
+      eventPhase: 0,
       defaultPrevented: false,
       propagationStopped: false,
       preventDefault() { this.defaultPrevented = true; },
@@ -46,13 +52,29 @@ class FakeEventTarget {
     };
     if (type === "click" && this.disabled) return event;
 
-    for (let current = this; current; current = current.parentNode) {
+    const path = [];
+    for (let current = this; current; current = current.parentNode) path.push(current);
+
+    const invoke = async (current, capture, phase) => {
       event.currentTarget = current;
-      for (const listener of current.listeners.get(type) || []) {
-        await listener(event);
+      event.eventPhase = phase;
+      for (const entry of current.listeners.get(type) || []) {
+        if (entry.capture === capture) await entry.listener(event);
       }
-      if (event.propagationStopped) break;
+    };
+
+    for (let index = path.length - 1; index > 0; index -= 1) {
+      await invoke(path[index], true, 1);
+      if (event.propagationStopped) return event;
     }
+    await invoke(this, true, 2);
+    await invoke(this, false, 2);
+    if (event.propagationStopped) return event;
+    for (let index = 1; index < path.length; index += 1) {
+      await invoke(path[index], false, 3);
+      if (event.propagationStopped) return event;
+    }
+    event.eventPhase = 0;
     return event;
   }
 }
@@ -102,6 +124,13 @@ class FakeElement extends FakeEventTarget {
     return child;
   }
 
+  contains(candidate) {
+    for (let current = candidate; current; current = current.parentNode) {
+      if (current === this) return true;
+    }
+    return false;
+  }
+
   setAttribute(name, value) {
     this.attributes.set(name, String(value));
   }
@@ -123,6 +152,14 @@ class FakeElement extends FakeEventTarget {
     return this.modalCard;
   }
 
+  querySelectorAll() {
+    return [];
+  }
+
+  focus() {
+    this.ownerDocument.activeElement = this;
+  }
+
   pause() {
     this.paused = true;
   }
@@ -138,9 +175,9 @@ class FakeElement extends FakeEventTarget {
 }
 
 const ELEMENT_IDS = [
-  "description-modal", "description-open", "fatal-error", "fullscreen-toggle",
+  "artwork-modal", "description-modal", "description-open", "fatal-error", "fullscreen-toggle",
   "login-form", "login-message", "login-modal", "login-open", "login-password",
-  "login-submit", "login-username", "museum-description", "museum-shell",
+  "login-submit", "login-username", "museum-description", "museum-fullscreen-root", "museum-shell",
   "museum-title", "music-toggle", "notice", "online-count", "panorama",
   "retry-bootstrap", "scene-audio", "scene-catalog", "scene-drawer",
   "scene-drawer-toggle", "scene-loading", "total-views", "view-panel",
@@ -151,10 +188,19 @@ class FakeDocument extends FakeEventTarget {
   constructor() {
     super();
     this.elements = new Map(ELEMENT_IDS.map((id) => [id, new FakeElement(id, this)]));
-    this.elements.forEach((element) => { element.parentNode = this; });
+    const fullscreenRoot = this.getElementById("museum-fullscreen-root");
+    const shell = this.getElementById("museum-shell");
+    fullscreenRoot.parentNode = this;
+    shell.parentNode = fullscreenRoot;
+    this.elements.forEach((element) => {
+      if (element !== fullscreenRoot && element !== shell) element.parentNode = shell;
+    });
+    for (const id of ["description-modal", "artwork-modal", "login-modal", "notice", "fatal-error"])
+      this.getElementById(id).parentNode = fullscreenRoot;
     this.fullscreenElement = null;
     this.requestedFullscreen = null;
     this.title = "";
+    this.activeElement = this.getElementById("description-open");
     this.viewButtons = ["normal", "planet", "fisheye", "crystal"].map((mode) => {
       const button = new FakeElement(`view-${mode}`, this);
       button.dataset.viewMode = mode;
@@ -167,6 +213,8 @@ class FakeDocument extends FakeEventTarget {
     this.getElementById("scene-drawer").hidden = true;
     this.getElementById("view-panel").hidden = true;
     this.getElementById("notice").hidden = true;
+    for (const id of ["description-modal", "artwork-modal", "login-modal"])
+      this.getElementById(id).setAttribute("aria-hidden", "true");
     this.getElementById("scene-drawer-toggle").setAttribute("aria-expanded", "false");
     this.getElementById("view-toggle").setAttribute("aria-expanded", "false");
     const music = this.getElementById("music-toggle");
@@ -186,6 +234,11 @@ class FakeDocument extends FakeEventTarget {
       return this.getElementById("scene-catalog").children;
     }
     return [];
+  }
+
+  querySelector(selector) {
+    if (selector === ".museum-shell") return this.getElementById("museum-shell");
+    return null;
   }
 
   createElement(tagName) {
@@ -236,7 +289,7 @@ class MuseumUiStateStub {
   }
 }
 
-async function createHarness() {
+async function createHarness({ reducedMotion = false } = {}) {
   const directory = await mkdtemp(join(tmpdir(), "jingjie-ar-museum-wiring-"));
   const sourcePath = new URL("../../WebApps/ARServer/www/js/museum-app.js", import.meta.url);
   let source = await readFile(sourcePath, "utf8");
@@ -255,13 +308,24 @@ async function createHarness() {
     ApiClient, ApiError, AuthSession, VisitorSession, KrpanoAdapter, ArtworkModal,
     MuseumLifecycle, ModalFocusManager, MuseumUiState
   } = globalThis.__museumAppTestDeps;\n${source}`;
+  source += "\nglobalThis.__museumAppTestInstance = app;\n";
   const modulePath = join(directory, "museum-app.mjs");
   await writeFile(modulePath, source);
+  const modalFocusPath = join(directory, "modal-focus.mjs");
+  await writeFile(modalFocusPath, await readFile(new URL(
+    "../../WebApps/ARServer/www/js/modal-focus.js", import.meta.url
+  ), "utf8"));
+  const { ModalFocusManager } = await import(`${pathToFileURL(modalFocusPath).href}?case=${Math.random()}`);
 
   const document = new FakeDocument();
   const window = new FakeEventTarget();
   window.setTimeout = () => 1;
   window.clearTimeout = () => {};
+  window.matchMediaQueries = [];
+  window.matchMedia = (query) => {
+    window.matchMediaQueries.push(query);
+    return { matches: reducedMotion };
+  };
 
   let rejectCatalog;
   const catalogPromise = new Promise((_, reject) => { rejectCatalog = reject; });
@@ -289,7 +353,8 @@ async function createHarness() {
     startCounterPolling() {}
   }
   class KrpanoAdapter {
-    constructor() {
+    constructor(options) {
+      this.options = options;
       this.viewMode = "normal";
       globalThis.__museumAppAdapter = this;
     }
@@ -300,28 +365,25 @@ async function createHarness() {
       this.viewMode = mode;
     }
     enterVr() {
+      if (this.vrAsyncError) {
+        const rejected = Promise.reject(this.vrAsyncError);
+        rejected.catch(() => {});
+        return rejected;
+      }
       if (this.vrError) throw this.vrError;
-      return true;
+      return Promise.resolve(true);
     }
   }
   class ArtworkModal {
     open() {}
     openText() {}
   }
-  class ModalFocusManager {
-    open(modal) {
-      modal.openedWithTransientLayersClosed =
-        document.getElementById("scene-drawer").hidden &&
-        document.getElementById("view-panel").hidden;
-    }
-    close() {}
-  }
-
   const previous = {
     document: globalThis.document,
     window: globalThis.window,
     deps: globalThis.__museumAppTestDeps,
-    adapter: globalThis.__museumAppAdapter
+    adapter: globalThis.__museumAppAdapter,
+    app: globalThis.__museumAppTestInstance
   };
   globalThis.document = document;
   globalThis.window = window;
@@ -332,16 +394,20 @@ async function createHarness() {
 
   await import(`${pathToFileURL(modulePath).href}?case=${Date.now()}-${Math.random()}`);
   const adapter = globalThis.__museumAppAdapter;
+  const app = globalThis.__museumAppTestInstance;
 
   return {
+    app,
     adapter,
     document,
+    window,
     failCatalog(error = new Error("展馆目录加载失败")) { rejectCatalog(error); },
     async cleanup() {
       globalThis.document = previous.document;
       globalThis.window = previous.window;
       globalThis.__museumAppTestDeps = previous.deps;
       globalThis.__museumAppAdapter = previous.adapter;
+      globalThis.__museumAppTestInstance = previous.app;
       await rm(directory, { recursive: true, force: true });
     }
   };
@@ -398,22 +464,30 @@ test("toggle click 冒泡时浮层保持打开，内部点击保留且真正外�
   }
 });
 
-test("全景 pointerdown 和 wheel 关闭当前临时浮层", async () => {
+test("krpano 子节点阻止冒泡时 panorama capture 仍关闭浮层且保持 passive", async () => {
   const harness = await createHarness();
   try {
     const drawer = harness.document.getElementById("scene-drawer");
     const panel = harness.document.getElementById("view-panel");
     const panorama = harness.document.getElementById("panorama");
+    const krpanoChild = new FakeElement("krpano-child", harness.document);
+    panorama.appendChild(krpanoChild);
+    krpanoChild.addEventListener("pointerdown", (event) => event.stopPropagation());
+    krpanoChild.addEventListener("wheel", (event) => event.stopPropagation());
 
     await harness.document.getElementById("scene-drawer-toggle").dispatch("click");
     assert.equal(drawer.hidden, false);
-    await panorama.dispatch("pointerdown");
+    await krpanoChild.dispatch("pointerdown");
     assert.equal(drawer.hidden, true);
 
     await harness.document.getElementById("view-toggle").dispatch("click");
     assert.equal(panel.hidden, false);
-    await panorama.dispatch("wheel");
+    await krpanoChild.dispatch("wheel");
     assert.equal(panel.hidden, true);
+    for (const type of ["pointerdown", "wheel"]) {
+      const listener = panorama.listeners.get(type).find((entry) => entry.capture);
+      assert.equal(listener?.passive, true, `${type} capture listener 应保持 passive`);
+    }
   } finally {
     await harness.cleanup();
   }
@@ -429,7 +503,40 @@ test("展馆简介在打开模态框前关闭临时浮层", async () => {
     assert.equal(drawer.hidden, false);
     await harness.document.getElementById("description-open").dispatch("click");
     assert.equal(drawer.hidden, true);
-    assert.equal(modal.openedWithTransientLayersClosed, true);
+    assert.equal(modal.classList.contains("is-open"), true);
+    assert.equal(modal.getAttribute("aria-hidden"), "false");
+  } finally {
+    await harness.cleanup();
+  }
+});
+
+test("所有 hotspot 分支在业务动作前统一关闭临时浮层", async () => {
+  const harness = await createHarness();
+  try {
+    const drawer = harness.document.getElementById("scene-drawer");
+    const panorama = harness.document.getElementById("panorama");
+    const closeSnapshots = [];
+    const switchSnapshots = [];
+    harness.app.switchScene = (sceneId) => {
+      switchSnapshots.push({ sceneId, drawerHidden: drawer.hidden });
+    };
+    const hotspots = [
+      { type: "artwork", artworkId: "artwork-1" },
+      { type: "text", title: "文字展项" },
+      { type: "unsupported" },
+      { type: "scene", targetSceneId: "scene-2" }
+    ];
+
+    for (const hotspot of hotspots) {
+      if (!drawer.hidden) await panorama.dispatch("pointerdown");
+      await harness.document.getElementById("scene-drawer-toggle").dispatch("click");
+      assert.equal(drawer.hidden, false);
+      harness.app.handleHotspot(hotspot);
+      closeSnapshots.push(drawer.hidden);
+    }
+
+    assert.deepEqual(closeSnapshots, [true, true, true, true]);
+    assert.deepEqual(switchSnapshots, [{ sceneId: "scene-2", drawerHidden: true }]);
   } finally {
     await harness.cleanup();
   }
@@ -457,19 +564,30 @@ test("音乐状态更新保留按钮中的 SVG 子节点", async () => {
   }
 });
 
-test("全屏请求使用 museum-shell 且 fullscreenchange 同步按钮", async () => {
+test("共同全屏根包含业务层，打开 modal 只 inert shell 且 modal 保持可见", async () => {
   const harness = await createHarness();
   try {
+    const root = harness.document.getElementById("museum-fullscreen-root");
     const shell = harness.document.getElementById("museum-shell");
     const button = harness.document.getElementById("fullscreen-toggle");
+    const modal = harness.document.getElementById("description-modal");
+    for (const id of ["description-modal", "artwork-modal", "login-modal", "notice", "fatal-error"])
+      assert.equal(root.contains(harness.document.getElementById(id)), true, `${id} 应在全屏根内`);
 
     await button.dispatch("click");
-    assert.equal(harness.document.requestedFullscreen, shell);
+    assert.equal(harness.document.requestedFullscreen, root);
 
-    harness.document.fullscreenElement = shell;
+    harness.document.fullscreenElement = root;
     await harness.document.dispatch("fullscreenchange");
     assert.equal(button.classList.contains("is-fullscreen"), true);
     assert.equal(button.getAttribute("aria-label"), "退出全屏");
+
+    await harness.document.getElementById("description-open").dispatch("click");
+    assert.equal(shell.inert, true);
+    assert.equal(modal.inert, false);
+    assert.equal(root.contains(modal), true);
+    assert.equal(modal.classList.contains("is-open"), true);
+    assert.equal(modal.getAttribute("aria-hidden"), "false");
 
     harness.document.fullscreenElement = null;
     await harness.document.dispatch("fullscreenchange");
@@ -480,15 +598,15 @@ test("全屏请求使用 museum-shell 且 fullscreenchange 同步按钮", async 
   }
 });
 
-test("VR 异常显示中文通知且不破坏全景状态", async () => {
+test("VR 异步拒绝由 click handler await/catch 并保留全景状态", async () => {
   const harness = await createHarness();
   try {
     const panorama = harness.document.getElementById("panorama");
     panorama.dataset.renderState = "loaded";
-    harness.adapter.vrError = new Error("当前设备或浏览器无法进入 VR");
+    harness.adapter.vrAsyncError = new Error("VR 进入超时，请重试");
 
     await harness.document.getElementById("vr-toggle").dispatch("click");
-    assert.match(harness.document.getElementById("notice").textContent, /无法进入 VR/);
+    assert.match(harness.document.getElementById("notice").textContent, /VR 进入超时，请重试/);
     assert.equal(panorama.dataset.renderState, "loaded");
   } finally {
     await harness.cleanup();
@@ -502,13 +620,27 @@ test("目录加载完成前禁用的音乐按钮立即呈现无音乐状态", as
     const audio = harness.document.getElementById("scene-audio");
     assert.equal(button.disabled, true);
     assert.equal(button.title, "当前场景暂无音乐");
+    assert.equal(button.getAttribute("aria-label"), "当前场景暂无音乐");
+    harness.app.configureMusic({ url: "/audio/guide.mp3" });
+    assert.equal(button.disabled, false);
+    assert.equal(button.title, "播放讲解");
     assert.equal(button.getAttribute("aria-label"), "播放讲解");
-    audio.src = "/audio/guide.mp3";
+    button.disabled = true;
     await button.dispatch("click");
     assert.equal(audio.paused, true);
     assert.equal(button.classList.contains("is-playing"), false);
     harness.failCatalog();
     await new Promise((resolve) => setImmediate(resolve));
+  } finally {
+    await harness.cleanup();
+  }
+});
+
+test("museum-app 按媒体查询结果显式注入 reducedMotion", async () => {
+  const harness = await createHarness({ reducedMotion: true });
+  try {
+    assert.deepEqual(harness.window.matchMediaQueries, ["(prefers-reduced-motion: reduce)"]);
+    assert.equal(harness.adapter.options.reducedMotion, true);
   } finally {
     await harness.cleanup();
   }

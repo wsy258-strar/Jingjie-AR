@@ -3,7 +3,6 @@
   --ink: #f6f1e6;
   --muted: #b9b09f;
   --line: rgba(246, 241, 230, .15);
-  --panel: #1b1915;
   --glass: rgba(20, 19, 16, .52);
   --glass-strong: rgba(20, 19, 16, .76);
   --glass-line: rgba(255, 255, 255, .26);
@@ -48,6 +47,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, [tabindex]:fo
 
 .skip-link:focus { transform: translateY(0); }
 
+.museum-fullscreen-root,
 .museum-shell {
   position: relative;
   width: 100%;
@@ -615,6 +615,7 @@ textarea { resize: vertical; }
     right: .65rem;
     bottom: 3.55rem;
     width: min(360px, calc(100vw - 1.3rem));
+    max-height: calc(100vh - 10rem);
     max-height: calc(100dvh - 10rem);
     overflow-y: auto;
   }

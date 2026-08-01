@@ -79,9 +79,11 @@ function renderUiState(state) {
 function setMusicButtonState(state) {
   const button = element("music-toggle");
   const playing = state === "playing";
+  const label = playing ? "暂停讲解" :
+    state === "unavailable" ? "当前场景暂无音乐" : "播放讲解";
   button.classList.toggle("is-playing", playing);
-  button.setAttribute("aria-label", playing ? "暂停讲解" : "播放讲解");
-  button.title = button.disabled ? "当前场景暂无音乐" : button.getAttribute("aria-label");
+  button.setAttribute("aria-label", label);
+  button.title = label;
 }
 
 const uiState = new MuseumUiState({ onChange: renderUiState });
@@ -93,9 +95,12 @@ class MuseumApp {
     this.currentScene = null;
     this.sceneGeneration = 0;
     this.sceneController = null;
+    const reducedMotion = typeof window.matchMedia === "function" &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     this.adapter = new KrpanoAdapter({
       targetId: "panorama",
-      onHotspot: (hotspot) => this.handleHotspot(hotspot)
+      onHotspot: (hotspot) => this.handleHotspot(hotspot),
+      reducedMotion
     });
   }
 
@@ -187,13 +192,12 @@ class MuseumApp {
   }
 
   handleHotspot(hotspot) {
+    uiState.closeTransientLayers();
     if (hotspot.type === "scene" && hotspot.targetSceneId) {
       this.switchScene(hotspot.targetSceneId);
     } else if (hotspot.type === "artwork" && hotspot.artworkId) {
-      uiState.closeTransientLayers();
       artworkModal.open(hotspot.artworkId);
     } else if (hotspot.type === "text") {
-      uiState.closeTransientLayers();
       artworkModal.openText(hotspot);
     } else {
       notify("该展项暂不支持打开");
@@ -271,7 +275,10 @@ document.querySelectorAll("[data-view-mode]").forEach((button) => {
 });
 
 for (const type of ["pointerdown", "wheel"]) {
-  element("panorama").addEventListener(type, () => uiState.closeTransientLayers(), { passive: true });
+  element("panorama").addEventListener(type, () => uiState.closeTransientLayers(), {
+    capture: true,
+    passive: true
+  });
 }
 
 document.addEventListener("click", () => uiState.closeTransientLayers());
@@ -347,7 +354,7 @@ element("scene-audio").addEventListener("ended", () => {
 });
 
 element("fullscreen-toggle").addEventListener("click", async () => {
-  const target = element("museum-shell");
+  const target = element("museum-fullscreen-root");
   try {
     if (!document.fullscreenElement) await target.requestFullscreen();
     else await document.exitFullscreen();
@@ -357,16 +364,16 @@ element("fullscreen-toggle").addEventListener("click", async () => {
 });
 
 document.addEventListener("fullscreenchange", () => {
-  const active = document.fullscreenElement === element("museum-shell");
+  const active = document.fullscreenElement === element("museum-fullscreen-root");
   const button = element("fullscreen-toggle");
   button.classList.toggle("is-fullscreen", active);
   button.setAttribute("aria-label", active ? "退出全屏" : "全屏浏览");
   button.title = button.getAttribute("aria-label");
 });
 
-element("vr-toggle").addEventListener("click", () => {
+element("vr-toggle").addEventListener("click", async () => {
   try {
-    app.adapter.enterVr();
+    await app.adapter.enterVr();
   } catch (error) {
     notify(error.message || "当前设备或浏览器无法进入 VR");
   }
