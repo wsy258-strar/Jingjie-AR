@@ -338,3 +338,135 @@ test("bfcache 恢复等待迟到 exit 完成后才重新登记在线", async () 
     "/api/visitors/session", "/api/presence/exit", "/api/visitors/session"
   ]);
 });
+
+test("页面协调层可等待 VisitorSession 的 bfcache 恢复完成", async () => {
+  const listeners = new Map();
+  let resolveBootstrap;
+  let bootstrapCalls = 0;
+  const recoveryGate = new Promise((resolve) => { resolveBootstrap = resolve; });
+  const session = new VisitorSession({
+    client: {
+      async request(path) {
+        if (path !== "/api/visitors/session") return {};
+        bootstrapCalls += 1;
+        if (bootstrapCalls > 1) await recoveryGate;
+        return { visitorToken: "visitor-1", statisticsAvailable: true };
+      }
+    },
+    storage: storageWith({ "ar.visitorToken": "visitor-1" }),
+    randomUUID: () => "bfcache-wait-request",
+    eventTarget: {
+      addEventListener(type, listener) { listeners.set(type, listener); }
+    },
+    setIntervalImpl() { return 1; },
+    clearIntervalImpl() {}
+  });
+  await session.bootstrap();
+  session.startHeartbeat();
+  listeners.get("pagehide")({ persisted: true });
+  listeners.get("pageshow")({ persisted: true });
+
+  let restored = false;
+  const waiting = session.waitForPageRestore().then(() => { restored = true; });
+  await Promise.resolve();
+  assert.equal(restored, false);
+  resolveBootstrap();
+  await waiting;
+  assert.equal(restored, true);
+});
+
+test("bfcache 恢复未完成时再次离开不会被迟到回调重新标记在线", async () => {
+  const listeners = new Map();
+  const calls = [];
+  let bootstrapCalls = 0;
+  let resolveRecovery;
+  let markRecoveryStarted;
+  const recoveryGate = new Promise((resolve) => { resolveRecovery = resolve; });
+  const recoveryStarted = new Promise((resolve) => { markRecoveryStarted = resolve; });
+  let intervals = 0;
+  const session = new VisitorSession({
+    client: {
+      async request(path) {
+        calls.push(path);
+        if (path !== "/api/visitors/session") return {};
+        bootstrapCalls += 1;
+        if (bootstrapCalls > 1) {
+          markRecoveryStarted();
+          await recoveryGate;
+        }
+        return { visitorToken: "visitor-1", statisticsAvailable: true };
+      }
+    },
+    storage: storageWith({ "ar.visitorToken": "visitor-1" }),
+    randomUUID: () => "stale-restore-request",
+    eventTarget: {
+      addEventListener(type, listener) { listeners.set(type, listener); }
+    },
+    setIntervalImpl() { intervals += 1; return intervals; },
+    clearIntervalImpl() {}
+  });
+  await session.bootstrap();
+  session.startHeartbeat();
+  listeners.get("pagehide")({ persisted: true });
+  const restoring = listeners.get("pageshow")({ persisted: true });
+  await recoveryStarted;
+  listeners.get("pagehide")({ persisted: true });
+  resolveRecovery();
+  await restoring;
+
+  assert.equal(session.heartbeatTimer, null);
+  assert.equal(intervals, 1);
+  assert.equal(calls.at(-1), "/api/presence/exit");
+});
+
+test("连续 bfcache 恢复会在最新 exit 后重新登记在线而不复用旧请求", async () => {
+  const listeners = new Map();
+  let bootstrapCalls = 0;
+  let presenceOnline = false;
+  let releaseOldResponse;
+  let markOldRecoveryStarted;
+  const oldResponseGate = new Promise((resolve) => { releaseOldResponse = resolve; });
+  const oldRecoveryStarted = new Promise((resolve) => { markOldRecoveryStarted = resolve; });
+  const session = new VisitorSession({
+    client: {
+      async request(path) {
+        if (path === "/api/presence/exit") {
+          presenceOnline = false;
+          return {};
+        }
+        if (path === "/api/visitors/session") {
+          bootstrapCalls += 1;
+          presenceOnline = true;
+          if (bootstrapCalls === 2) {
+            markOldRecoveryStarted();
+            await oldResponseGate;
+          }
+          return { visitorToken: "visitor-1", statisticsAvailable: true };
+        }
+        return {};
+      }
+    },
+    storage: storageWith({ "ar.visitorToken": "visitor-1" }),
+    randomUUID: () => "latest-exit-request",
+    eventTarget: {
+      addEventListener(type, listener) { listeners.set(type, listener); }
+    },
+    setIntervalImpl() { return 1; },
+    clearIntervalImpl() {}
+  });
+  await session.bootstrap();
+  session.startHeartbeat();
+  listeners.get("pagehide")({ persisted: true });
+  const oldRestore = listeners.get("pageshow")({ persisted: true });
+  await oldRecoveryStarted;
+  listeners.get("pagehide")({ persisted: true });
+  const latestRestore = listeners.get("pageshow")({ persisted: true });
+  await Promise.resolve();
+  await Promise.resolve();
+  releaseOldResponse();
+  await Promise.all([oldRestore, latestRestore]);
+
+  assert.equal(bootstrapCalls, 3);
+  assert.equal(presenceOnline, true);
+  assert.notEqual(session.heartbeatTimer, null);
+});

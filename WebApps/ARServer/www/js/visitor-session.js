@@ -43,6 +43,9 @@ export class VisitorSession {
     this.heartbeatTimer = null;
     this.recoveryPromise = null;
     this.exitPromise = Promise.resolve();
+    this.pageRestorePromise = Promise.resolve(false);
+    this.pageGeneration = 0;
+    this.pageVisible = true;
     this.statisticsPending = false;
     this.lastError = null;
     this.pagehideBound = false;
@@ -119,6 +122,17 @@ export class VisitorSession {
     return this.recoveryPromise;
   }
 
+  restoreAfterExit() {
+    if (!this.bootstrapRequestId) return Promise.resolve(false);
+    return Promise.resolve()
+      .then(() => this.requestBootstrap(this.bootstrapRequestId))
+      .then((result) => Boolean(this.acceptBootstrap(result)))
+      .catch((error) => {
+        this.lastError = error;
+        return false;
+      });
+  }
+
   async heartbeat() {
     try {
       await this.client.request("/api/presence/heartbeat", { method: "POST", visitor: true });
@@ -162,13 +176,29 @@ export class VisitorSession {
   }
 
   onPagehide() {
+    this.pageGeneration += 1;
+    this.pageVisible = false;
     this.stopHeartbeat({ sendExit: true });
   }
 
-  async onPageshow(event) {
-    if (!event || event.persisted !== true) return;
-    await this.exitPromise;
-    await this.recover({ markFailureUnavailable: false });
-    this.startHeartbeat();
+  onPageshow(event) {
+    if (!event || event.persisted !== true) return Promise.resolve(false);
+    const generation = this.pageGeneration;
+    this.pageVisible = true;
+    this.pageRestorePromise = Promise.resolve(this.exitPromise)
+      .then(() => this.restoreAfterExit())
+      .then(() => {
+        if (generation !== this.pageGeneration) {
+          if (!this.pageVisible) this.stopHeartbeat({ sendExit: true });
+          return false;
+        }
+        this.startHeartbeat();
+        return true;
+      });
+    return this.pageRestorePromise;
+  }
+
+  waitForPageRestore() {
+    return this.pageRestorePromise;
   }
 }

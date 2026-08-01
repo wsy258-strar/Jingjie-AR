@@ -52,7 +52,7 @@ function closeLogin(cancelled = true) {
 
 const auth = new AuthSession({ client: api, onAuthenticationRequired: openLogin });
 const visitor = new VisitorSession({ client: api });
-const lifecycle = new MuseumLifecycle({ visitor });
+const lifecycle = new MuseumLifecycle({ visitor, refreshCounters: () => app.loadCounters() });
 const modalManager = new ModalFocusManager();
 const artworkModal = new ArtworkModal({ api, auth, modalManager, notify });
 
@@ -62,7 +62,6 @@ class MuseumApp {
     this.currentScene = null;
     this.sceneGeneration = 0;
     this.sceneController = null;
-    this.counterTimer = null;
     this.adapter = new KrpanoAdapter({
       targetId: "panorama",
       onHotspot: (hotspot) => this.handleHotspot(hotspot)
@@ -84,7 +83,7 @@ class MuseumApp {
       this.renderExhibition(catalog);
       await this.switchScene(catalog.defaultSceneId);
       visitor.startHeartbeat();
-      this.startCounterPolling();
+      lifecycle.startCounterPolling();
     } catch (error) {
       if (error && error.name === "AbortError") return;
       element("scene-loading").hidden = true;
@@ -199,10 +198,6 @@ class MuseumApp {
     }
   }
 
-  startCounterPolling() {
-    if (this.counterTimer) return;
-    this.counterTimer = window.setInterval(() => this.loadCounters(), 15000);
-  }
 }
 
 const app = new MuseumApp();
@@ -296,7 +291,6 @@ element("retry-bootstrap").addEventListener("click", () => app.bootstrap());
 
 window.addEventListener("pagehide", () => {
   if (app.sceneController) app.sceneController.abort();
-  if (app.counterTimer) window.clearInterval(app.counterTimer);
 });
 
 if (auth.token()) element("login-open").textContent = "已登录 · 退出";
