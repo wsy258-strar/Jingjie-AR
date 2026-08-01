@@ -596,6 +596,30 @@ textarea { resize: vertical; }
   }
 }
 
+@media (max-height: 420px) and (orientation: landscape) {
+  .viewer-toolbar {
+    top: auto;
+    right: .65rem;
+    bottom: .65rem;
+    grid-template-columns: repeat(4, 38px);
+    gap: .4rem;
+  }
+
+  .icon-button {
+    width: 38px;
+    height: 38px;
+  }
+
+  .view-panel {
+    top: auto;
+    right: .65rem;
+    bottom: 3.55rem;
+    width: min(360px, calc(100vw - 1.3rem));
+    max-height: calc(100dvh - 10rem);
+    overflow-y: auto;
+  }
+}
+
 @media (max-width: 520px) {
   .modal {
     align-items: stretch;
