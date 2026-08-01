@@ -125,6 +125,11 @@
     "sha256": "02b61ac7ae226b97f5eed5ecf14e99d68a895edb50095f054fc74ad4c4734f95"
   },
   {
+    "path": "krp/plugins/webvr.js",
+    "size": 51134,
+    "sha256": "89820d40a2ccac12678d2c847ac2eee47e82822e698139faeefb0818a0c3c2fe"
+  },
+  {
     "path": "music/musicword-reading-books-312690.mp3",
     "size": 2113201,
     "sha256": "8e8613fd88a6ac1972d519cc1a0abb1b5dfa8641cffc1da25c38568d6b211842"
