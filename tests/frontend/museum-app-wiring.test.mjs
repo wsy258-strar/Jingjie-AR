@@ -25,6 +25,7 @@ class FakeClassList {
 class FakeEventTarget {
   constructor() {
     this.listeners = new Map();
+    this.parentNode = null;
   }
 
   addEventListener(type, listener) {
@@ -36,14 +37,21 @@ class FakeEventTarget {
     const event = {
       ...init,
       type,
-      target: init.target || this,
+      target: this,
+      currentTarget: null,
       defaultPrevented: false,
       propagationStopped: false,
       preventDefault() { this.defaultPrevented = true; },
       stopPropagation() { this.propagationStopped = true; }
     };
-    for (const listener of this.listeners.get(type) || []) {
-      await listener(event);
+    if (type === "click" && this.disabled) return event;
+
+    for (let current = this; current; current = current.parentNode) {
+      event.currentTarget = current;
+      for (const listener of current.listeners.get(type) || []) {
+        await listener(event);
+      }
+      if (event.propagationStopped) break;
     }
     return event;
   }
@@ -75,14 +83,21 @@ class FakeElement extends FakeEventTarget {
 
   set textContent(value) {
     this._textContent = String(value);
+    this.children.forEach((child) => {
+      if (child && typeof child === "object") child.parentNode = null;
+    });
     this.children = [];
   }
 
   append(...children) {
+    children.forEach((child) => {
+      if (child && typeof child === "object") child.parentNode = this;
+    });
     this.children.push(...children);
   }
 
   appendChild(child) {
+    if (child && typeof child === "object") child.parentNode = this;
     this.children.push(child);
     return child;
   }
@@ -101,7 +116,10 @@ class FakeElement extends FakeEventTarget {
   }
 
   querySelector() {
-    if (!this.modalCard) this.modalCard = new FakeElement(`${this.id}-card`, this.ownerDocument);
+    if (!this.modalCard) {
+      this.modalCard = new FakeElement(`${this.id}-card`, this.ownerDocument);
+      this.modalCard.parentNode = this;
+    }
     return this.modalCard;
   }
 
@@ -133,6 +151,7 @@ class FakeDocument extends FakeEventTarget {
   constructor() {
     super();
     this.elements = new Map(ELEMENT_IDS.map((id) => [id, new FakeElement(id, this)]));
+    this.elements.forEach((element) => { element.parentNode = this; });
     this.fullscreenElement = null;
     this.requestedFullscreen = null;
     this.title = "";
@@ -140,9 +159,11 @@ class FakeDocument extends FakeEventTarget {
       const button = new FakeElement(`view-${mode}`, this);
       button.dataset.viewMode = mode;
       button.setAttribute("aria-pressed", String(mode === "normal"));
+      button.parentNode = this.getElementById("view-panel");
       return button;
     });
 
+    this.getElementById("scene-catalog").parentNode = this.getElementById("scene-drawer");
     this.getElementById("scene-drawer").hidden = true;
     this.getElementById("view-panel").hidden = true;
     this.getElementById("notice").hidden = true;
@@ -219,6 +240,16 @@ async function createHarness() {
   const directory = await mkdtemp(join(tmpdir(), "jingjie-ar-museum-wiring-"));
   const sourcePath = new URL("../../WebApps/ARServer/www/js/museum-app.js", import.meta.url);
   let source = await readFile(sourcePath, "utf8");
+  if (process.env.MUSEUM_APP_WIRING_MUTATION === "remove-scene-toggle-stop") {
+    const original = `element("scene-drawer-toggle").addEventListener("click", (event) => {
+  event.stopPropagation();
+  uiState.toggleSceneDrawer();
+});`;
+    const mutated = original.replace("  event.stopPropagation();\n", "");
+    const mutatedSource = source.replace(original, mutated);
+    assert.notEqual(mutatedSource, source, "scene toggle stopPropagation mutation target missing");
+    source = mutatedSource;
+  }
   source = source.replace(/^import .*;\n/gm, "");
   source = `const {
     ApiClient, ApiError, AuthSession, VisitorSession, KrpanoAdapter, ArtworkModal,
@@ -278,7 +309,11 @@ async function createHarness() {
     openText() {}
   }
   class ModalFocusManager {
-    open() {}
+    open(modal) {
+      modal.openedWithTransientLayersClosed =
+        document.getElementById("scene-drawer").hidden &&
+        document.getElementById("view-panel").hidden;
+    }
     close() {}
   }
 
@@ -333,26 +368,68 @@ test("视角适配器失败时保留选择，成功后才推进 UI", async () =>
   }
 });
 
-test("抽屉与视角面板互斥且外部点击和 Escape 关闭", async () => {
+test("toggle click 冒泡时浮层保持打开，内部点击保留且真正外部点击关闭", async () => {
   const harness = await createHarness();
   try {
     const drawer = harness.document.getElementById("scene-drawer");
     const panel = harness.document.getElementById("view-panel");
+    const panorama = harness.document.getElementById("panorama");
 
     await harness.document.getElementById("scene-drawer-toggle").dispatch("click");
     assert.equal(drawer.hidden, false);
     assert.equal(panel.hidden, true);
+    await drawer.dispatch("click");
+    assert.equal(drawer.hidden, false);
 
     await harness.document.getElementById("view-toggle").dispatch("click");
     assert.equal(drawer.hidden, true);
     assert.equal(panel.hidden, false);
+    await panel.dispatch("click");
+    assert.equal(panel.hidden, false);
 
-    await harness.document.dispatch("click");
+    await panorama.dispatch("click");
     assert.equal(panel.hidden, true);
 
     await harness.document.getElementById("scene-drawer-toggle").dispatch("click");
     await harness.document.dispatch("keydown", { key: "Escape" });
     assert.equal(drawer.hidden, true);
+  } finally {
+    await harness.cleanup();
+  }
+});
+
+test("全景 pointerdown 和 wheel 关闭当前临时浮层", async () => {
+  const harness = await createHarness();
+  try {
+    const drawer = harness.document.getElementById("scene-drawer");
+    const panel = harness.document.getElementById("view-panel");
+    const panorama = harness.document.getElementById("panorama");
+
+    await harness.document.getElementById("scene-drawer-toggle").dispatch("click");
+    assert.equal(drawer.hidden, false);
+    await panorama.dispatch("pointerdown");
+    assert.equal(drawer.hidden, true);
+
+    await harness.document.getElementById("view-toggle").dispatch("click");
+    assert.equal(panel.hidden, false);
+    await panorama.dispatch("wheel");
+    assert.equal(panel.hidden, true);
+  } finally {
+    await harness.cleanup();
+  }
+});
+
+test("展馆简介在打开模态框前关闭临时浮层", async () => {
+  const harness = await createHarness();
+  try {
+    const drawer = harness.document.getElementById("scene-drawer");
+    const modal = harness.document.getElementById("description-modal");
+
+    await harness.document.getElementById("scene-drawer-toggle").dispatch("click");
+    assert.equal(drawer.hidden, false);
+    await harness.document.getElementById("description-open").dispatch("click");
+    assert.equal(drawer.hidden, true);
+    assert.equal(modal.openedWithTransientLayersClosed, true);
   } finally {
     await harness.cleanup();
   }
@@ -364,6 +441,7 @@ test("音乐状态更新保留按钮中的 SVG 子节点", async () => {
     const button = harness.document.getElementById("music-toggle");
     const svg = button.children[0];
     const audio = harness.document.getElementById("scene-audio");
+    button.disabled = false;
     audio.src = "/audio/guide.mp3";
 
     await button.dispatch("click");
@@ -421,9 +499,14 @@ test("目录加载完成前禁用的音乐按钮立即呈现无音乐状态", as
   const harness = await createHarness();
   try {
     const button = harness.document.getElementById("music-toggle");
+    const audio = harness.document.getElementById("scene-audio");
     assert.equal(button.disabled, true);
     assert.equal(button.title, "当前场景暂无音乐");
     assert.equal(button.getAttribute("aria-label"), "播放讲解");
+    audio.src = "/audio/guide.mp3";
+    await button.dispatch("click");
+    assert.equal(audio.paused, true);
+    assert.equal(button.classList.contains("is-playing"), false);
     harness.failCatalog();
     await new Promise((resolve) => setImmediate(resolve));
   } finally {
@@ -435,6 +518,7 @@ test("手动播放被 AbortError 中断时不显示误导通知", async () => {
   const harness = await createHarness();
   try {
     const audio = harness.document.getElementById("scene-audio");
+    harness.document.getElementById("music-toggle").disabled = false;
     audio.src = "/audio/guide.mp3";
     audio.playError = Object.assign(new Error("The play request was interrupted"), {
       name: "AbortError"
@@ -452,6 +536,7 @@ test("手动播放的其他拒绝仍显示中文通知", async () => {
   const harness = await createHarness();
   try {
     const audio = harness.document.getElementById("scene-audio");
+    harness.document.getElementById("music-toggle").disabled = false;
     audio.src = "/audio/guide.mp3";
     audio.playError = new Error("NotAllowedError");
 
