@@ -3,6 +3,7 @@ set -euo pipefail
 
 root="${1:-WebApps/ARServer/www}"
 index="$root/index.html"
+css="$root/css/museum.css"
 
 grep -Fq 'type="module"' "$index"
 grep -Fq '/assets/krp/runtime/player_krp_v2.js' "$index"
@@ -55,5 +56,20 @@ test ! -e "$root/assets/thumbnail"
 grep -Fq 'new AbortController' "$root/js/museum-app.js"
 grep -Fq '.abort()' "$root/js/museum-app.js"
 grep -Fq 'textContent' "$root/js/artwork-modal.js"
+
+grep -Fq '.museum-shell' "$css"
+grep -Fq 'height: 100dvh' "$css"
+grep -Fq '.floating-header' "$css"
+grep -Fq 'backdrop-filter: blur(' "$css"
+grep -Fq '.viewer-toolbar' "$css"
+grep -Fq '.scene-drawer' "$css"
+grep -Fq '.scene-drawer.is-open' "$css"
+grep -Fq '.view-panel' "$css"
+grep -Fq '@media (max-width: 820px)' "$css"
+grep -Fq 'grid-template-areas:' "$css"
+grep -Fq 'overflow-x: auto' "$css"
+grep -Fq '@media (prefers-reduced-motion: reduce)' "$css"
+! grep -Fq 'grid-template-columns: minmax(0, 1fr) clamp(250px' "$css"
+! grep -Fq '.catalog-panel' "$css"
 
 printf 'PASS: museum frontend static shell\n'
