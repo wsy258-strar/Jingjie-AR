@@ -13,7 +13,12 @@ TaskWorkerPool::TaskWorkerPool(size_t workers, size_t capacity)
 
 TaskWorkerPool::~TaskWorkerPool()
 {
-    // accepting_ 变为 false 后，wait 谓词仍允许已排队任务被依次取走。
+    shutdown();
+}
+
+void TaskWorkerPool::shutdown()
+{
+    // 对象在 shutdown 后仍然存活，迟到的跨线程回调可安全收到 submit=false。
     {
         std::lock_guard<std::mutex> lock(mutex_);
         accepting_ = false;

@@ -191,6 +191,12 @@ add_test(NAME ar_server_scene_wiring_static_test
 set_tests_properties(ar_server_scene_wiring_static_test
     PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 
+add_test(NAME production_session_cache_wiring_static_test
+    COMMAND bash
+        ${CMAKE_SOURCE_DIR}/tests/integration/production_session_cache_wiring_static_test.sh)
+set_tests_properties(production_session_cache_wiring_static_test
+    PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+
 add_test(NAME jingjie_ar_schema_static_test
     COMMAND bash ${CMAKE_SOURCE_DIR}/tests/integration/jingjie_ar_schema_static_test.sh)
 set_tests_properties(jingjie_ar_schema_static_test

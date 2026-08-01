@@ -8,6 +8,7 @@
 #include <handlers/VisitorHandlers.h>
 #include <services/ArtworkInteractionService.h>
 #include <services/AuthService.h>
+#include <services/CachedSessionStore.h>
 #include <services/DaoAuthStore.h>
 #include <services/DaoSessionStore.h>
 #include <services/PresenceService.h>
@@ -31,6 +32,7 @@
 #endif
 #ifdef HAS_REDIS
 #include <cache/RedisConnectionPool.h>
+#include <cache/SessionCache.h>
 #endif
 
 #include <cstdlib>
@@ -85,6 +87,15 @@ int main()
         new TaskWorkerPool(config.cacheWorkers, 128));
     StaticFileHandler files(config.staticRoot, StaticFileHandler::CacheGet(),
                             StaticFileHandler::CachePut(), fileWorkers.get(), 1024 * 1024);
+#ifdef HAS_REDIS
+    // 会话缓存、游客身份与在线状态复用同一连接池，统一 Redis 配置和连接上限。
+    std::unique_ptr<RedisConnectionPool> redisPool(new RedisConnectionPool(
+        config.redisHost, config.redisPort, config.redisPoolSize));
+    std::unique_ptr<ar::RedisVisitorStore> visitorStore(
+        new ar::RedisVisitorStore(redisPool.get()));
+    std::unique_ptr<ar::RedisPresenceStore> presenceStore(
+        new ar::RedisPresenceStore(redisPool.get()));
+#endif
 #ifdef HAS_MYSQL
     MySQLConnectionPool::ConnInfo mysqlInfo = {
         config.mysqlHost, config.mysqlPort, config.mysqlUser,
@@ -101,20 +112,24 @@ int main()
     std::unique_ptr<ar::DaoAuthStore> authStore(new ar::DaoAuthStore(sessionDao.get()));
     std::unique_ptr<ar::DaoSessionStore> sessionStore(
         new ar::DaoSessionStore(sessionDao.get()));
-#endif
-
+    ar::SessionStore* effectiveSessionStore = sessionStore.get();
 #ifdef HAS_REDIS
-    std::unique_ptr<RedisConnectionPool> redisPool(new RedisConnectionPool(
-        config.redisHost, config.redisPort, config.redisPoolSize));
-    std::unique_ptr<ar::RedisVisitorStore> visitorStore(
-        new ar::RedisVisitorStore(redisPool.get()));
-    std::unique_ptr<ar::RedisPresenceStore> presenceStore(
-        new ar::RedisPresenceStore(redisPool.get()));
+    std::unique_ptr<SessionCache> sessionCache(
+        new SessionCache(redisPool.get()));
+    std::unique_ptr<ar::SessionCacheAdapter> sessionCacheAdapter(
+        new ar::SessionCacheAdapter(sessionCache.get()));
+    std::unique_ptr<TaskWorkerPool> sessionCacheWorkers(
+        new TaskWorkerPool(config.cacheWorkers, 128));
+    std::unique_ptr<ar::CachedSessionStore> cachedSessionStore(
+        new ar::CachedSessionStore(sessionStore.get(),
+                                   sessionCacheAdapter.get(), sessionCacheWorkers.get()));
+    effectiveSessionStore = cachedSessionStore.get();
+#endif
 #endif
 
 #ifdef HAS_MYSQL
     ar::AuthService authService(authStore.get());
-    ar::SessionService sessionService(sessionStore.get());
+    ar::SessionService sessionService(effectiveSessionStore);
 #else
     ar::AuthService authService(0);
     ar::SessionService sessionService(0);
@@ -169,7 +184,14 @@ int main()
     fileWorkers.reset();
     visitorWorkers.reset();
 #ifdef HAS_MYSQL
+#ifdef HAS_REDIS
+    // 先停止缓存任务但保留 worker 对象，让 DB 迟到回调可安全收到 submit=false。
+    sessionCacheWorkers->shutdown();
+#endif
     dbWorkers.reset();
+#ifdef HAS_REDIS
+    sessionCacheWorkers.reset();
+#endif
 #endif
     if (logging)
     {

@@ -186,5 +186,23 @@ int main()
     CHECK(raceFindCompleted.load());
     CHECK(raceResult && raceResult->status == 0);
     CHECK(raceCache.value.status == 0);
+
+    FakeCache shutdownCache;
+    DelayedDurableStore shutdownDurable;
+    TaskWorkerPool shutdownWorkers(1, 8);
+    ar::CachedSessionStore shutdownStore(
+        &shutdownDurable, &shutdownCache, &shutdownWorkers);
+    std::atomic<bool> shutdownFindCompleted(false);
+    std::shared_ptr<Session> shutdownResult(new Session());
+    shutdownStore.find("shutdown-token", [&](const std::shared_ptr<Session>& session) {
+        shutdownResult = session;
+        shutdownFindCompleted.store(true);
+    });
+    shutdownDurable.waitForPending();
+    shutdownWorkers.shutdown();
+    shutdownDurable.completeActive();
+    CHECK(shutdownFindCompleted.load());
+    CHECK(!shutdownResult);
+    shutdownWorkers.shutdown();
     return 0;
 }

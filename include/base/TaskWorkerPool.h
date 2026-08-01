@@ -21,6 +21,8 @@ public:
 
     /// 非阻塞提交任务；关闭、无工作线程或队列已满时返回 false。
     bool submit(const Task& task);
+    /// 停止接收新任务，排空队列并等待工作线程退出；可重复调用。
+    void shutdown();
     /// 返回当前等待队列长度，不包含已被工作线程取走的任务。
     size_t pendingCount() const;
 
