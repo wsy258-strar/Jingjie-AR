@@ -62,6 +62,7 @@ test("XML 转义覆盖标签、引号、与号和单引号", () => {
 
 test("场景 XML 包含低清预览、高清立方体和视角，且不渲染 inactive 热点", () => {
   const xml = buildSceneXml(scene);
+  assert.match(xml, /<plugin name="webvr" devices="html5" keep="true" url="\/assets\/krp\/plugins\/webvr\.js" mobilevr_support="true" \/>/);
   assert.match(xml, /15949056_%s\.jpg/);
   assert.match(xml, /preview\.jpg\?x=1&amp;y=2/);
   assert.match(xml, /hlookat="-5\.5"/);
@@ -249,6 +250,10 @@ test("四种视角模式映射为独立的 krpano 投影动作", async () => {
     assert.match(calls.at(-1), /stereographic,false/);
     assert.match(calls.at(-1), /lookto\(18,-4,72/);
     assert.throws(() => adapter.setViewMode("unknown"), /不支持的视角模式/);
+    assert.throws(() => adapter.setViewMode("constructor"), /不支持的视角模式/);
+    assert.throws(() => adapter.setViewMode("toString"), /不支持的视角模式/);
+    assert.throws(() => adapter.applyViewMode("constructor"), /不支持的视角模式/);
+    assert.throws(() => adapter.applyViewMode("toString"), /不支持的视角模式/);
   } finally {
     if (previousEmbedpano === undefined) delete globalThis.embedpano;
     else globalThis.embedpano = previousEmbedpano;
@@ -271,7 +276,68 @@ test("切换场景后重新应用当前特殊视角", async () => {
     await adapter.loadScene(scene, 1);
     adapter.setViewMode("fisheye");
     await adapter.loadScene({ ...scene, sceneId: "76196993" }, 2);
-    assert.match(calls.at(-1), /fisheye,1\.0/);
+    assert.match(calls.at(-1), /fisheye="1\.0"/);
+    assert.match(calls.at(-1), /fov="120"/);
+  } finally {
+    if (previousEmbedpano === undefined) delete globalThis.embedpano;
+    else globalThis.embedpano = previousEmbedpano;
+  }
+});
+
+test("特殊视角切场景通过单次 XML 提交保持画面和热点一致", async () => {
+  const previousEmbedpano = globalThis.embedpano;
+  const calls = [];
+  const selected = [];
+  let rejectProjectionAction = false;
+  let renderedSceneId = null;
+  const player = {
+    get(key) {
+      return { "view.hlookat": "0", "view.vlookat": "0", "view.fov": "90" }[key];
+    },
+    call(command) {
+      calls.push(command);
+      if (command.includes("loadxml(")) {
+        renderedSceneId = command.includes("new-scene-hotspot") ? "new" : "old";
+        return;
+      }
+      if (rejectProjectionAction) throw new Error("projection action failed");
+    }
+  };
+  globalThis.embedpano = (options) => options.onready(player);
+  const nextScene = {
+    ...scene,
+    sceneId: "76196993",
+    hotspots: [{
+      hotspotId: "new-scene-hotspot",
+      type: "scene",
+      title: "新场景热点",
+      ath: 1,
+      atv: 2,
+      iconUrl: "/assets/hotspot/new_spotd1_gif.png",
+      targetSceneId: "76196994",
+      renderable: true
+    }]
+  };
+
+  try {
+    const adapter = new KrpanoAdapter({
+      targetId: "panorama",
+      onHotspot(hotspot) { selected.push(hotspot.hotspotId); }
+    });
+    assert.equal(await adapter.loadScene(scene, 1), true);
+    adapter.setViewMode("fisheye");
+    const callsBeforeSwitch = calls.length;
+    rejectProjectionAction = true;
+
+    assert.equal(await adapter.loadScene(nextScene, 2), true);
+    assert.equal(calls.length, callsBeforeSwitch + 1);
+    assert.match(calls.at(-1), /fisheye="1\.0"/);
+    assert.match(calls.at(-1), /fov="120"/);
+    assert.equal(renderedSceneId, "new");
+    assert.equal(adapter.loaded, true);
+    assert.equal(adapter.currentHotspots[0].hotspotId, "new-scene-hotspot");
+    globalThis.JingjieARHotspotBridge(0);
+    assert.deepEqual(selected, ["new-scene-hotspot"]);
   } finally {
     if (previousEmbedpano === undefined) delete globalThis.embedpano;
     else globalThis.embedpano = previousEmbedpano;

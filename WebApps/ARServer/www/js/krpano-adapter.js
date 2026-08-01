@@ -18,6 +18,10 @@ const VIEW_ACTIONS = Object.freeze({
     "set(view.stereographic,true); tween(view.fisheye,1.0,0.45); tween(view.vlookat,0,0.45); tween(view.fov,150,0.45);"
 });
 
+function isSupportedViewMode(mode) {
+  return Object.hasOwn(VIEW_ACTIONS, mode);
+}
+
 let hotspotBridge = null;
 
 globalThis.JingjieARHotspotBridge = function (index) {
@@ -38,13 +42,23 @@ function finiteNumber(value, fallback) {
   return Number.isFinite(number) ? number : fallback;
 }
 
-function viewFor(scene, override) {
+function viewFor(scene, override, mode = VIEW_MODES.NORMAL) {
   const source = override || scene.view || {};
-  return {
+  const view = {
     hlookat: finiteNumber(source.hlookat, 0),
     vlookat: finiteNumber(source.vlookat, 0),
     fov: finiteNumber(source.fov, 90)
   };
+  switch (mode) {
+    case VIEW_MODES.PLANET:
+      return { ...view, vlookat: 90, fov: 150, stereographic: true, fisheye: "1.0" };
+    case VIEW_MODES.FISHEYE:
+      return { ...view, fov: 120, stereographic: false, fisheye: "1.0" };
+    case VIEW_MODES.CRYSTAL:
+      return { ...view, vlookat: 0, fov: 150, stereographic: true, fisheye: "1.0" };
+    default:
+      return { ...view, stereographic: false, fisheye: "0.0" };
+  }
 }
 
 function renderableHotspots(scene) {
@@ -53,8 +67,8 @@ function renderableHotspots(scene) {
     : [];
 }
 
-export function buildSceneXml(scene, viewOverride = null) {
-  const view = viewFor(scene, viewOverride);
+export function buildSceneXml(scene, viewOverride = null, viewMode = VIEW_MODES.NORMAL) {
+  const view = viewFor(scene, viewOverride, viewMode);
   const hotspots = renderableHotspots(scene);
   const hotspotXml = hotspots.map((hotspot, index) => [
     '<hotspot name="', xmlEscape(hotspot.hotspotId || `hotspot-${index}`),
@@ -73,7 +87,8 @@ export function buildSceneXml(scene, viewOverride = null) {
     '<preview url="', xmlEscape(scene.previewUrl), '" />',
     '<image><cube url="', xmlEscape(scene.cubeUrl), '" /></image>',
     '<view hlookat="', view.hlookat, '" vlookat="', view.vlookat,
-    '" fov="', view.fov, '" />',
+    '" fov="', view.fov, '" stereographic="', view.stereographic,
+    '" fisheye="', view.fisheye, '" />',
     hotspotXml,
     '</krpano>'
   ].join("");
@@ -149,15 +164,15 @@ export class KrpanoAdapter {
   }
 
   applyViewMode(mode) {
+    if (!isSupportedViewMode(mode)) throw new Error(`不支持的视角模式：${mode}`);
     const actionFactory = VIEW_ACTIONS[mode];
-    if (!actionFactory) throw new Error(`不支持的视角模式：${mode}`);
     const fallback = this.normalView || this.getView() || { hlookat: 0, vlookat: 0, fov: 90 };
     this.player.call(actionFactory(fallback));
   }
 
   setViewMode(mode) {
     if (!this.player) throw new Error("全景播放器尚未就绪");
-    if (!VIEW_ACTIONS[mode]) throw new Error(`不支持的视角模式：${mode}`);
+    if (!isSupportedViewMode(mode)) throw new Error(`不支持的视角模式：${mode}`);
     if (this.viewMode === VIEW_MODES.NORMAL && mode !== VIEW_MODES.NORMAL)
       this.normalView = this.getView();
     this.applyViewMode(mode);
@@ -194,9 +209,8 @@ export class KrpanoAdapter {
 
     const preservedView = this.loaded ? this.getView() : null;
     const nextHotspots = renderableHotspots(scene);
-    const xml = buildSceneXml(scene, preservedView);
+    const xml = buildSceneXml(scene, preservedView, this.viewMode);
     this.player.call(`loadxml('${krpanoActionString(xml)}', null, RESET);`);
-    if (this.viewMode !== VIEW_MODES.NORMAL) this.applyViewMode(this.viewMode);
     this.currentHotspots = nextHotspots;
     this.loaded = true;
     return true;
