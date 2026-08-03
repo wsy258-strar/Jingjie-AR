@@ -303,3 +303,22 @@ test("评论请求失败时不改变已有滚动位置", async () => {
   assert.equal(modal.commentsScroller.scrollTop, 88);
   assert.deepEqual(notifications, ["网络异常"]);
 });
+
+test("迟到的评论成功响应不污染切换后的作品弹窗", async () => {
+  let resolveRequest;
+  const pending = new Promise((resolve) => { resolveRequest = resolve; });
+  const modal = commentsModal({ request: async () => pending, scrollTop: 160 });
+  const oldContext = modal.artworkContext();
+
+  const loading = modal.loadComments(true, oldContext);
+  modal.currentArtwork = { artworkId: "work-b", liked: false };
+  modal.modalGeneration = 2;
+  resolveRequest({
+    comments: [{ username: "旧作品访客", content: "不应显示" }],
+    nextBefore: 0
+  });
+  await loading;
+
+  assert.equal(modal.commentsScroller.scrollTop, 160);
+  assert.equal(modal.commentList.children.length, 0);
+});
