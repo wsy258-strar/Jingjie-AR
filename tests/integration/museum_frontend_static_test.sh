@@ -143,7 +143,7 @@ for label, condition in {
     assert_properties(
         f"{label} image status",
         selector_block(media, ".artwork-image-status"),
-        {"left": ".45rem", "right": "auto", "bottom": ".45rem"},
+        {"left": ".45rem", "right": "auto", "bottom": "calc(.45rem + 2.3rem)"},
     )
 PY
 

@@ -834,7 +834,7 @@ textarea { resize: vertical; }
 
   .artwork-tool-icon { width: 14px; height: 14px; }
 
-  .artwork-image-status { left: .45rem; right: auto; bottom: .45rem; }
+  .artwork-image-status { left: .45rem; right: auto; bottom: calc(.45rem + 2.3rem); }
 
   .artwork-tabs button { padding: .45rem; }
 
@@ -900,7 +900,7 @@ textarea { resize: vertical; }
 
   .artwork-tool-icon { width: 14px; height: 14px; }
 
-  .artwork-image-status { left: .45rem; right: auto; bottom: .45rem; }
+  .artwork-image-status { left: .45rem; right: auto; bottom: calc(.45rem + 2.3rem); }
 }
 
 @media (prefers-reduced-motion: reduce) {
