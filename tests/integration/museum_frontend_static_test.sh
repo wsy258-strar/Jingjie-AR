@@ -67,10 +67,85 @@ assert audit.buttons == {
 }
 PY
 
-grep -Fq '.artwork-gallery-tools {' "$css"
-grep -Fq 'bottom: .75rem;' "$css"
-grep -Fq 'font-size: .78rem;' "$css"
-grep -Fq '.artwork-tool-icon {' "$css"
+python3 - "$css" <<'PY'
+from pathlib import Path
+import re
+import sys
+
+css = Path(sys.argv[1]).read_text(encoding="utf-8")
+
+def braced_content(source, opening_brace):
+    depth = 0
+    for index in range(opening_brace, len(source)):
+        if source[index] == "{":
+            depth += 1
+        elif source[index] == "}":
+            depth -= 1
+            if depth == 0:
+                return source[opening_brace + 1:index]
+    raise AssertionError("unclosed CSS block")
+
+def selector_block(source, selector):
+    match = re.search(rf"(?m)^[ \t]*{re.escape(selector)}[ \t]*\{{", source)
+    assert match, f"missing selector block: {selector}"
+    return braced_content(source, match.end() - 1)
+
+def media_block(condition):
+    match = re.search(rf"@media\s*{re.escape(condition)}\s*\{{", css)
+    assert match, f"missing media query: {condition}"
+    return braced_content(css, match.end() - 1)
+
+def declarations(block):
+    return {
+        name: value.strip()
+        for name, value in re.findall(r"([\w-]+)\s*:\s*([^;{}]+);", block)
+    }
+
+def assert_properties(label, block, expected):
+    actual = declarations(block)
+    for name, value in expected.items():
+        assert actual.get(name) == value, (
+            f"{label}: expected {name}: {value}; got {actual.get(name)!r}"
+        )
+    return actual
+
+desktop_tools = selector_block(css, ".artwork-gallery-tools")
+desktop_tool_values = assert_properties(
+    "desktop toolbar", desktop_tools, {"right": ".75rem", "bottom": ".75rem"}
+)
+assert "top" not in desktop_tool_values, "desktop toolbar must not use top positioning"
+assert_properties(
+    "desktop toolbar button",
+    selector_block(css, ".artwork-gallery-tools button"),
+    {"font-size": ".78rem", "gap": ".28rem"},
+)
+assert_properties(
+    "desktop image status",
+    selector_block(css, ".artwork-image-status"),
+    {"left": ".75rem", "right": "auto", "bottom": ".75rem"},
+)
+
+for label, condition in {
+    "short landscape": "(max-width: 900px) and (max-height: 420px) and (orientation: landscape)",
+    "narrow mobile": "(max-width: 520px)",
+}.items():
+    media = media_block(condition)
+    assert_properties(
+        f"{label} toolbar",
+        selector_block(media, ".artwork-gallery-tools"),
+        {"right": ".45rem", "bottom": ".45rem", "gap": ".2rem", "padding": ".2rem"},
+    )
+    assert_properties(
+        f"{label} toolbar button",
+        selector_block(media, ".artwork-gallery-tools button"),
+        {"gap": ".2rem", "font-size": ".72rem", "min-height": "28px"},
+    )
+    assert_properties(
+        f"{label} image status",
+        selector_block(media, ".artwork-image-status"),
+        {"left": ".45rem", "right": "auto", "bottom": ".45rem"},
+    )
+PY
 
 grep -Fq 'role="tablist"' "$index"
 grep -Fq 'data-artwork-tab="details"' "$index"

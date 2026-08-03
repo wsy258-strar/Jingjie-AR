@@ -519,7 +519,7 @@ button:disabled { cursor: not-allowed; opacity: .5; }
 }
 
 .artwork-image-count { top: .75rem; left: .75rem; }
-.artwork-image-status { right: .75rem; bottom: .75rem; }
+.artwork-image-status { left: .75rem; right: auto; bottom: .75rem; }
 
 .artwork-gallery-tools {
   position: absolute;
@@ -827,11 +827,14 @@ textarea { resize: vertical; }
 
   .artwork-gallery-tools button {
     gap: .2rem;
+    min-height: 28px;
     padding: .26rem .38rem;
     font-size: .72rem;
   }
 
   .artwork-tool-icon { width: 14px; height: 14px; }
+
+  .artwork-image-status { left: .45rem; right: auto; bottom: .45rem; }
 
   .artwork-tabs button { padding: .45rem; }
 
@@ -890,11 +893,14 @@ textarea { resize: vertical; }
 
   .artwork-gallery-tools button {
     gap: .2rem;
+    min-height: 28px;
     padding: .26rem .38rem;
     font-size: .72rem;
   }
 
   .artwork-tool-icon { width: 14px; height: 14px; }
+
+  .artwork-image-status { left: .45rem; right: auto; bottom: .45rem; }
 }
 
 @media (prefers-reduced-motion: reduce) {
