@@ -56,8 +56,13 @@ function tabButton(name) {
 function modalFixture() {
   const root = element();
   const card = element();
+  const tabsContainer = element();
   const tabs = [tabButton("details"), tabButton("comments")];
-  root.querySelector = (selector) => selector === ".modal-card" ? card : null;
+  root.querySelector = (selector) => {
+    if (selector === ".modal-card") return card;
+    if (selector === ".artwork-tabs") return tabsContainer;
+    return null;
+  };
   root.querySelectorAll = (selector) => selector === "[data-artwork-tab]" ? tabs : [];
   const ids = [
     "artwork-title", "artwork-gallery", "artwork-gallery-stage", "artwork-image",
@@ -76,7 +81,7 @@ function modalFixture() {
     querySelectorAll(selector) { return selector === "[data-artwork-tab]" ? [tabButton("details"), tabButton("comments")] : []; },
     createElement: element
   };
-  return { root, card, elements, galleryTools, documentObject };
+  return { root, card, tabsContainer, elements, galleryTools, documentObject };
 }
 
 test("失效用户令牌不阻断公开作品详情，清理后只降级重试一次", async () => {
@@ -185,4 +190,60 @@ test("打开作品保留预置画廊舞台并使用新的评论面板 ID", async
   } finally {
     globalThis.Image = originalImage;
   }
+});
+
+test("文字热点隐藏画廊、标签、工具栏与互动区", () => {
+  const fixture = modalFixture();
+  const modal = new ArtworkModal({
+    api: {}, auth: { token: () => "" }, modalManager: { open() {}, close() {} },
+    notify: () => {}, documentObject: fixture.documentObject
+  });
+
+  modal.openText({ title: "策展说明", text: "这里是文字热点内容" });
+
+  assert.equal(fixture.card.classList.contains("is-text-only"), true);
+  assert.equal(fixture.elements["artwork-gallery"].hidden, true);
+  assert.equal(fixture.tabsContainer.hidden, true);
+  assert.equal(fixture.galleryTools.hidden, true);
+  assert.equal(fixture.elements["artwork-comments-panel"].hidden, true);
+  assert.equal(fixture.card.dataset.mobileTab, "details");
+});
+
+test("关闭弹窗会清空画廊", () => {
+  const modal = Object.create(ArtworkModal.prototype);
+  let clears = 0;
+  modal.cancelLoad = () => {};
+  modal.modalGeneration = 0;
+  modal.modalManager = { close() {} };
+  modal.root = {};
+  modal.galleryViewer = { clear() { clears += 1; } };
+
+  modal.close();
+
+  assert.equal(clears, 1);
+});
+
+test("文字热点后打开作品恢复完整画廊与默认说明标签", async () => {
+  const fixture = modalFixture();
+  const modal = new ArtworkModal({
+    api: {
+      async request(path) {
+        if (path.includes("/comments")) return { comments: [], nextBefore: 0 };
+        return { artworkId: "work-1", title: "启航", text: "说明", images: ["/a.jpg"] };
+      }
+    },
+    auth: { token: () => "" }, modalManager: { open() {}, close() {} },
+    notify: (message) => assert.fail(message), documentObject: fixture.documentObject
+  });
+
+  modal.openText({ title: "策展说明", text: "这里是文字热点内容" });
+  await modal.open("work-1");
+
+  assert.equal(fixture.card.classList.contains("is-text-only"), false);
+  assert.equal(fixture.elements["artwork-gallery"].hidden, false);
+  assert.equal(fixture.tabsContainer.hidden, false);
+  assert.equal(fixture.galleryTools.hidden, false);
+  assert.equal(fixture.elements["artwork-comments-panel"].hidden, false);
+  assert.equal(fixture.card.dataset.mobileTab, "details");
+  assert.equal(modal.tabButtons[0].attributes["aria-selected"], "true");
 });

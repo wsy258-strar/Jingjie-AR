@@ -533,6 +533,22 @@ button:disabled { cursor: not-allowed; opacity: .5; }
 
 .artwork-tabs { display: none; }
 
+/* 文字热点只保留说明，避免移动端标签规则重新显示评论互动。 */
+.artwork-card.is-text-only .artwork-gallery,
+.artwork-card.is-text-only .artwork-tabs,
+.artwork-card.is-text-only .artwork-interactions {
+  display: none !important;
+}
+
+.artwork-card.is-text-only .artwork-layout { grid-template-columns: minmax(0, 1fr); }
+
+.artwork-card.is-text-only .artwork-content { display: block; }
+
+.artwork-card.is-text-only .artwork-details-panel {
+  height: 100%;
+  padding-top: clamp(1rem, 2vw, 1.5rem);
+}
+
 .artwork-interactions h3 { font-size: 1rem; font-weight: 500; }
 
 .like-button {
@@ -729,6 +745,10 @@ textarea { resize: vertical; }
     display: grid;
     height: auto;
   }
+
+  .artwork-card.is-text-only .artwork-content { display: contents; }
+
+  .artwork-card.is-text-only .artwork-details-panel { grid-row: 1 / 4; }
 }
 
 @media (max-height: 420px) and (orientation: landscape) {

@@ -46,6 +46,7 @@ export class ArtworkModal {
     });
     this.text = documentObject.getElementById("artwork-text");
     this.interactions = documentObject.getElementById("artwork-comments-panel");
+    this.tabs = this.root.querySelector(".artwork-tabs");
     this.tabButtons = Array.from(this.root.querySelectorAll("[data-artwork-tab]"));
     this.likeButton = documentObject.getElementById("artwork-like");
     this.likeSymbol = documentObject.getElementById("artwork-like-symbol");
@@ -104,6 +105,8 @@ export class ArtworkModal {
     this.galleryViewer.clear();
     this.commentList.textContent = "";
     this.card.classList.remove("is-text-only");
+    this.gallery.hidden = false;
+    this.tabs.hidden = false;
     this.galleryTools.hidden = false;
     this.interactions.hidden = false;
     this.loadController = new AbortController();
@@ -138,6 +141,8 @@ export class ArtworkModal {
     this.galleryViewer.clear();
     this.commentList.textContent = "";
     this.card.classList.add("is-text-only");
+    this.gallery.hidden = true;
+    this.tabs.hidden = true;
     this.galleryTools.hidden = true;
     this.interactions.hidden = true;
   }
