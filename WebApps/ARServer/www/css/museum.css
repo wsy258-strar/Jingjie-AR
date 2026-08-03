@@ -814,9 +814,22 @@ textarea { resize: vertical; }
 
   .artwork-header h2 { font-size: 1.1rem; }
 
-  .artwork-layout { grid-template-rows: minmax(120px, 2fr) auto minmax(0, 3fr); }
+  .artwork-layout { grid-template-rows: minmax(130px, 2fr) auto minmax(0, 3fr); }
 
   .artwork-gallery { padding: .5rem; }
+
+  .artwork-gallery-nav {
+    top: .45rem;
+    width: 32px;
+    height: 32px;
+    transform: none;
+  }
+
+  .artwork-image-count {
+    top: .45rem;
+    left: 50%;
+    transform: translateX(-50%);
+  }
 
   .artwork-gallery-tools {
     right: .45rem;
@@ -834,7 +847,7 @@ textarea { resize: vertical; }
 
   .artwork-tool-icon { width: 14px; height: 14px; }
 
-  .artwork-image-status { left: .45rem; right: auto; bottom: calc(.45rem + 2.3rem); }
+  .artwork-image-status { left: .45rem; right: auto; bottom: .45rem; }
 
   .artwork-tabs button { padding: .45rem; }
 

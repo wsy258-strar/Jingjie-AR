@@ -24,10 +24,6 @@ for id in artwork-gallery-stage artwork-image artwork-prev artwork-next \
   grep -Fq "id=\"$id\"" "$index"
 done
 
-for icon in artwork-tool-icon-zoom-in artwork-tool-icon-zoom-out artwork-tool-icon-reset; do
-  grep -Fq "class=\"artwork-tool-icon $icon\"" "$index"
-done
-
 python3 - "$index" <<'PY'
 from html.parser import HTMLParser
 from pathlib import Path
@@ -45,10 +41,17 @@ class ToolIconAudit(HTMLParser):
             "artwork-zoom-in", "artwork-zoom-out", "artwork-reset"
         }:
             self.current_button = attrs["id"]
-            self.buttons[self.current_button] = {"svg": False, "text": ""}
+            assert self.current_button not in self.buttons
+            self.buttons[self.current_button] = {
+                "aria_label": attrs.get("aria-label"),
+                "svgs": [],
+                "text": "",
+            }
         elif tag == "svg" and self.current_button:
-            assert attrs.get("aria-hidden") == "true"
-            self.buttons[self.current_button]["svg"] = True
+            self.buttons[self.current_button]["svgs"].append({
+                "class": attrs.get("class"),
+                "aria_hidden": attrs.get("aria-hidden"),
+            })
 
     def handle_data(self, data):
         if self.current_button:
@@ -61,9 +64,30 @@ class ToolIconAudit(HTMLParser):
 audit = ToolIconAudit()
 audit.feed(Path(sys.argv[1]).read_text(encoding="utf-8"))
 assert audit.buttons == {
-    "artwork-zoom-in": {"svg": True, "text": "放大"},
-    "artwork-zoom-out": {"svg": True, "text": "缩小"},
-    "artwork-reset": {"svg": True, "text": "重置"},
+    "artwork-zoom-in": {
+        "aria_label": "放大图片",
+        "svgs": [{
+            "class": "artwork-tool-icon artwork-tool-icon-zoom-in",
+            "aria_hidden": "true",
+        }],
+        "text": "放大",
+    },
+    "artwork-zoom-out": {
+        "aria_label": "缩小图片",
+        "svgs": [{
+            "class": "artwork-tool-icon artwork-tool-icon-zoom-out",
+            "aria_hidden": "true",
+        }],
+        "text": "缩小",
+    },
+    "artwork-reset": {
+        "aria_label": "重置图片视图",
+        "svgs": [{
+            "class": "artwork-tool-icon artwork-tool-icon-reset",
+            "aria_hidden": "true",
+        }],
+        "text": "重置",
+    },
 }
 PY
 
@@ -111,13 +135,35 @@ def assert_properties(label, block, expected):
 
 desktop_tools = selector_block(css, ".artwork-gallery-tools")
 desktop_tool_values = assert_properties(
-    "desktop toolbar", desktop_tools, {"right": ".75rem", "bottom": ".75rem"}
+    "desktop toolbar",
+    desktop_tools,
+    {
+        "position": "absolute",
+        "right": ".75rem",
+        "bottom": ".75rem",
+        "display": "flex",
+    },
 )
 assert "top" not in desktop_tool_values, "desktop toolbar must not use top positioning"
 assert_properties(
     "desktop toolbar button",
     selector_block(css, ".artwork-gallery-tools button"),
-    {"font-size": ".78rem", "gap": ".28rem"},
+    {
+        "display": "inline-flex",
+        "align-items": "center",
+        "font-size": ".78rem",
+        "gap": ".28rem",
+    },
+)
+assert_properties(
+    "desktop toolbar icon",
+    selector_block(css, ".artwork-tool-icon"),
+    {
+        "width": "15px",
+        "height": "15px",
+        "fill": "none",
+        "stroke": "var(--accent-strong)",
+    },
 )
 assert_properties(
     "desktop image status",
@@ -125,10 +171,31 @@ assert_properties(
     {"left": ".75rem", "right": "auto", "bottom": ".75rem"},
 )
 
-for label, condition in {
-    "short landscape": "(max-width: 900px) and (max-height: 420px) and (orientation: landscape)",
-    "narrow mobile": "(max-width: 520px)",
-}.items():
+short_landscape = "(max-width: 900px) and (max-height: 420px) and (orientation: landscape)"
+assert css.index(f"@media {short_landscape}") < css.index("@media (max-width: 520px)"), (
+    "narrow mobile overrides must follow short landscape overrides"
+)
+short_media = media_block(short_landscape)
+assert_properties(
+    "short landscape artwork layout",
+    selector_block(short_media, ".artwork-layout"),
+    {"grid-template-rows": "minmax(130px, 2fr) auto minmax(0, 3fr)"},
+)
+assert_properties(
+    "short landscape gallery navigation",
+    selector_block(short_media, ".artwork-gallery-nav"),
+    {"top": ".45rem", "width": "32px", "height": "32px", "transform": "none"},
+)
+assert_properties(
+    "short landscape image count",
+    selector_block(short_media, ".artwork-image-count"),
+    {"top": ".45rem", "left": "50%", "transform": "translateX(-50%)"},
+)
+
+for label, condition, status_bottom in (
+    ("short landscape", short_landscape, ".45rem"),
+    ("narrow mobile", "(max-width: 520px)", "calc(.45rem + 2.3rem)"),
+):
     media = media_block(condition)
     assert_properties(
         f"{label} toolbar",
@@ -143,7 +210,7 @@ for label, condition in {
     assert_properties(
         f"{label} image status",
         selector_block(media, ".artwork-image-status"),
-        {"left": ".45rem", "right": "auto", "bottom": "calc(.45rem + 2.3rem)"},
+        {"left": ".45rem", "right": "auto", "bottom": status_bottom},
     )
 PY
 
