@@ -1,5 +1,6 @@
 // 作品弹窗只使用安全 DOM 属性写入后端内容，并协调登录后的一次性待操作重试。
 import { ApiError } from "./api-client.js";
+import { ArtworkGallery } from "./artwork-gallery.js";
 
 function formatCount(value) {
   const count = Number(value);
@@ -30,8 +31,22 @@ export class ArtworkModal {
     this.card = this.root.querySelector(".modal-card");
     this.title = documentObject.getElementById("artwork-title");
     this.gallery = documentObject.getElementById("artwork-gallery");
+    this.galleryTools = this.gallery.querySelector(".artwork-gallery-tools");
+    this.galleryViewer = new ArtworkGallery({
+      root: this.gallery,
+      stage: documentObject.getElementById("artwork-gallery-stage"),
+      image: documentObject.getElementById("artwork-image"),
+      previousButton: documentObject.getElementById("artwork-prev"),
+      nextButton: documentObject.getElementById("artwork-next"),
+      counter: documentObject.getElementById("artwork-image-count"),
+      status: documentObject.getElementById("artwork-image-status"),
+      zoomInButton: documentObject.getElementById("artwork-zoom-in"),
+      zoomOutButton: documentObject.getElementById("artwork-zoom-out"),
+      resetButton: documentObject.getElementById("artwork-reset")
+    });
     this.text = documentObject.getElementById("artwork-text");
-    this.interactions = documentObject.getElementById("artwork-interactions");
+    this.interactions = documentObject.getElementById("artwork-comments-panel");
+    this.tabButtons = Array.from(this.root.querySelectorAll("[data-artwork-tab]"));
     this.likeButton = documentObject.getElementById("artwork-like");
     this.likeSymbol = documentObject.getElementById("artwork-like-symbol");
     this.likeLabel = documentObject.getElementById("artwork-like-label");
@@ -51,6 +66,9 @@ export class ArtworkModal {
   bindEvents() {
     this.root.querySelectorAll("[data-artwork-close]").forEach((element) => {
       element.addEventListener("click", () => this.close());
+    });
+    this.tabButtons.forEach((button) => {
+      button.addEventListener("click", () => this.setActiveTab(button.dataset.artworkTab));
     });
     this.likeButton.addEventListener("click", () => {
       if (!this.currentArtwork) return;
@@ -80,10 +98,13 @@ export class ArtworkModal {
     });
     this.currentArtwork = null;
     this.nextBefore = 0;
+    this.setActiveTab("details");
     this.title.textContent = "作品加载中…";
     this.text.textContent = "";
-    this.gallery.textContent = "";
+    this.galleryViewer.clear();
     this.commentList.textContent = "";
+    this.card.classList.remove("is-text-only");
+    this.galleryTools.hidden = false;
     this.interactions.hidden = false;
     this.loadController = new AbortController();
 
@@ -111,25 +132,29 @@ export class ArtworkModal {
       onEscape: () => this.close()
     });
     this.currentArtwork = null;
+    this.setActiveTab("details");
     this.title.textContent = hotspot.title || "展览信息";
     this.text.textContent = hotspot.text || "";
-    this.gallery.textContent = "";
+    this.galleryViewer.clear();
     this.commentList.textContent = "";
+    this.card.classList.add("is-text-only");
+    this.galleryTools.hidden = true;
     this.interactions.hidden = true;
   }
 
   renderDetail(detail) {
     this.title.textContent = detail.title || "未命名作品";
     this.text.textContent = detail.text || "";
-    this.gallery.textContent = "";
-    for (const source of Array.isArray(detail.images) ? detail.images : []) {
-      const image = this.document.createElement("img");
-      image.src = source;
-      image.alt = detail.title || "作品图片";
-      image.loading = "lazy";
-      this.gallery.appendChild(image);
-    }
+    this.galleryViewer.setImages(detail.images, detail.title || "未命名作品");
     this.updateLike(detail.liked, detail.likeCount);
+  }
+
+  setActiveTab(tab) {
+    const activeTab = tab === "comments" ? "comments" : "details";
+    this.card.dataset.mobileTab = activeTab;
+    this.tabButtons.forEach((button) => {
+      button.setAttribute("aria-selected", String(button.dataset.artworkTab === activeTab));
+    });
   }
 
   updateLike(liked, count) {
@@ -249,5 +274,6 @@ export class ArtworkModal {
     ++this.modalGeneration;
     this.modalManager.close(this.root);
     this.currentArtwork = null;
+    this.galleryViewer.clear();
   }
 }
