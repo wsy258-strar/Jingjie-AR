@@ -72,31 +72,58 @@
   <section id="artwork-modal" class="modal" role="dialog" aria-modal="true"
     aria-labelledby="artwork-title" aria-hidden="true">
     <div class="modal-backdrop" data-artwork-close></div>
-    <div class="modal-card artwork-card" tabindex="-1">
-      <button class="modal-close" type="button" data-artwork-close aria-label="关闭作品详情">×</button>
-      <div class="artwork-content">
+    <div class="modal-card artwork-card" data-mobile-tab="details" tabindex="-1">
+      <header class="artwork-header">
         <p class="modal-kicker">COLLECTION</p>
         <h2 id="artwork-title">作品详情</h2>
-        <div id="artwork-gallery" class="artwork-gallery" aria-label="作品图片"></div>
-        <div id="artwork-text" class="artwork-text"></div>
+        <button class="modal-close" type="button" data-artwork-close aria-label="关闭作品详情">×</button>
+      </header>
+      <div class="artwork-layout">
+        <div class="artwork-content">
+          <section id="artwork-gallery" class="artwork-gallery" aria-label="作品图片">
+            <div id="artwork-gallery-stage" class="artwork-gallery-stage">
+              <img id="artwork-image" alt="作品图片">
+              <button id="artwork-prev" class="artwork-gallery-nav artwork-gallery-prev" type="button" aria-label="查看上一张图片">‹</button>
+              <button id="artwork-next" class="artwork-gallery-nav artwork-gallery-next" type="button" aria-label="查看下一张图片">›</button>
+              <span id="artwork-image-count" class="artwork-image-count" aria-live="polite"></span>
+              <p id="artwork-image-status" class="artwork-image-status" role="status" aria-live="polite"></p>
+              <div class="artwork-gallery-tools" role="group" aria-label="图片工具">
+                <button id="artwork-zoom-in" type="button" aria-label="放大图片">放大</button>
+                <button id="artwork-zoom-out" type="button" aria-label="缩小图片">缩小</button>
+                <button id="artwork-reset" type="button" aria-label="重置图片视图">重置</button>
+              </div>
+            </div>
+          </section>
+          <div class="artwork-tabs" role="tablist" aria-label="作品信息切换">
+            <button type="button" role="tab" aria-selected="true" aria-controls="artwork-details-panel"
+              data-artwork-tab="details">作品说明</button>
+            <button type="button" role="tab" aria-selected="false" aria-controls="artwork-comments-panel"
+              data-artwork-tab="comments">评论互动</button>
+          </div>
+          <section id="artwork-details-panel" class="artwork-details-panel" role="tabpanel">
+            <div id="artwork-text" class="artwork-text"></div>
+          </section>
+        </div>
+        <aside id="artwork-comments-panel" class="artwork-interactions" role="tabpanel">
+          <section class="artwork-comments-scroll" aria-labelledby="comments-title">
+            <h3 id="comments-title">观众评论</h3>
+            <div id="comment-list" class="comment-list" aria-live="polite"></div>
+            <button id="comments-more" class="text-button" type="button" hidden>加载更多</button>
+          </section>
+          <div class="artwork-interaction-dock">
+            <button id="artwork-like" class="like-button" type="button">
+              <span id="artwork-like-symbol" aria-hidden="true">♡</span>
+              <span id="artwork-like-label">点赞</span>
+              <span id="artwork-like-count">0</span>
+            </button>
+            <form id="comment-form" class="comment-form">
+              <label for="comment-input">写下你的评论</label>
+              <textarea id="comment-input" maxlength="1000" rows="3" placeholder="点赞或评论前需要登录"></textarea>
+              <button class="accent-button" type="submit">发布评论</button>
+            </form>
+          </div>
+        </aside>
       </div>
-      <aside id="artwork-interactions" class="artwork-interactions">
-        <button id="artwork-like" class="like-button" type="button">
-          <span id="artwork-like-symbol" aria-hidden="true">♡</span>
-          <span id="artwork-like-label">点赞</span>
-          <span id="artwork-like-count">0</span>
-        </button>
-        <section aria-labelledby="comments-title">
-          <h3 id="comments-title">观众评论</h3>
-          <div id="comment-list" class="comment-list" aria-live="polite"></div>
-          <button id="comments-more" class="text-button" type="button" hidden>加载更多</button>
-          <form id="comment-form" class="comment-form">
-            <label for="comment-input">写下你的评论</label>
-            <textarea id="comment-input" maxlength="1000" rows="3" placeholder="点赞或评论前需要登录"></textarea>
-            <button class="accent-button" type="submit">发布评论</button>
-          </form>
-        </section>
-      </aside>
     </div>
   </section>
 

@@ -18,6 +18,15 @@ grep -Fq 'id="artwork-modal"' "$index"
 grep -Fq 'id="login-modal"' "$index"
 grep -Fq 'id="notice"' "$index"
 
+for id in artwork-gallery-stage artwork-image artwork-prev artwork-next \
+  artwork-image-count artwork-zoom-in artwork-zoom-out artwork-reset \
+  artwork-image-status artwork-details-panel artwork-comments-panel; do
+  grep -Fq "id=\"$id\"" "$index"
+done
+grep -Fq 'role="tablist"' "$index"
+grep -Fq 'data-artwork-tab="details"' "$index"
+grep -Fq 'data-artwork-tab="comments"' "$index"
+
 grep -Fq 'id="museum-fullscreen-root"' "$index"
 grep -Fq 'id="museum-shell"' "$index"
 grep -Fq 'id="scene-drawer-toggle"' "$index"
@@ -122,6 +131,9 @@ grep -Fq 'grid-template-columns: repeat(4, 38px)' "$css"
 grep -Fq 'max-height: calc(100vh - 10rem)' "$css"
 grep -Fq 'max-height: calc(100dvh - 10rem)' "$css"
 grep -Fq 'overflow-y: auto' "$css"
+grep -Fq 'grid-template-rows: minmax(0, 3fr) minmax(0, 2fr)' "$css"
+grep -Fq '.artwork-interaction-dock' "$css"
+grep -Fq '.artwork-comments-scroll' "$css"
 grep -Fq '@media (prefers-reduced-motion: reduce)' "$css"
 ! grep -Fq 'grid-template-columns: minmax(0, 1fr) clamp(250px' "$css"
 ! grep -Fq '.catalog-panel' "$css"
