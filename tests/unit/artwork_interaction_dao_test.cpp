@@ -23,10 +23,12 @@ void testUnavailablePoolCompletesAllCallbacksWithSafeDefaults()
         CHECK(!liked);
         ++callbacks;
     });
-    dao.summary("artwork-1", 7, [&callbacks](bool ok, uint64_t count, bool liked) {
+    dao.summary("artwork-1", 7,
+                [&callbacks](bool ok, uint64_t count, bool liked, uint64_t commentCount) {
         CHECK(!ok);
         CHECK(count == 0);
         CHECK(!liked);
+        CHECK(commentCount == 0);
         ++callbacks;
     });
     dao.createComment("artwork-1", 7, "hello", [&callbacks](bool ok, uint64_t id) {

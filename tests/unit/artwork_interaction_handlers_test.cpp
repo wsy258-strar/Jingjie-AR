@@ -40,7 +40,7 @@ public:
     }
     void summary(const std::string&, uint64_t userId, const SummaryCallback& callback) override
     {
-        callback(true, 3, userId != 0);
+        callback(true, 3, userId != 0, 2);
     }
     void createComment(const std::string&, uint64_t, const std::string&,
                        const CommentCallback& callback) override
@@ -108,6 +108,7 @@ void testAllSuccessfulHandlersUseUnifiedEnvelopeAndEscapeJson()
     CHECK(detail.body().find("{\"success\":true,\"data\":") == 0);
     CHECK(detail.body().find("\"artworkId\":\"" + artworkId + "\"") != std::string::npos);
     CHECK(detail.body().find("\"likeCount\":3") != std::string::npos);
+    CHECK(detail.body().find("\"commentCount\":2") != std::string::npos);
     CHECK(detail.body().find("\"liked\":true") != std::string::npos);
 
     HttpResponse like = invoke([&](const AsyncResponder& responder) {

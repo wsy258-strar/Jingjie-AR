@@ -20,10 +20,11 @@ struct ArtworkInteractionResult
     enum Status { kOk, kUnauthorized, kBadRequest, kNotFound, kUnavailable };
 
     ArtworkInteractionResult()
-        : status(kOk), likeCount(0), liked(false), nextBefore(0), commentId(0) {}
+        : status(kOk), likeCount(0), commentCount(0), liked(false), nextBefore(0), commentId(0) {}
 
     Status status;
     uint64_t likeCount;
+    uint64_t commentCount;
     bool liked;
     std::vector<ArtworkComment> comments;
     uint64_t nextBefore;

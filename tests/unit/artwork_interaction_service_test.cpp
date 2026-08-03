@@ -48,6 +48,11 @@ public:
         callback(true, !duplicateLike, 1, likedResult);
     }
 
+    void summary(const std::string&, uint64_t userId, const SummaryCallback& callback) override
+    {
+        callback(true, 3, userId != 0, 2);
+    }
+
     void createComment(const std::string&, uint64_t, const std::string&,
                        const CommentCallback& callback) override
     {
@@ -263,6 +268,24 @@ void testInactiveSessionCannotReadPersonalStateOrWriteArtwork()
     CHECK(dao.likeCalls == 0);
 }
 
+void testDetailIncludesCommentCount()
+{
+    std::unique_ptr<ar::ExhibitionCatalog> catalog = loadCatalog();
+    RecordingSessionStore store;
+    ar::SessionService sessions(&store);
+    RecordingDAO dao;
+    ar::ArtworkInteractionService service(catalog.get(), &sessions, &dao);
+    ar::ArtworkInteractionResult result;
+
+    service.detail("valid-token", knownArtworkId(*catalog),
+                   [&result](const ar::ArtworkInteractionResult& value) { result = value; });
+
+    CHECK(result.status == ar::ArtworkInteractionResult::kOk);
+    CHECK(result.likeCount == 3);
+    CHECK(result.liked);
+    CHECK(result.commentCount == 2);
+}
+
 void testCommentRejectsBlankAndOversizedBytes()
 {
     std::unique_ptr<ar::ExhibitionCatalog> catalog = loadCatalog();
@@ -442,6 +465,7 @@ int main()
     testDuplicateLikeIsIdempotent();
     testLikeUsesPersistedLikedState();
     testInactiveSessionCannotReadPersonalStateOrWriteArtwork();
+    testDetailIncludesCommentCount();
     testCommentRejectsBlankAndOversizedBytes();
     testCommentRejectsUnicodeWhitespaceAndInvalidUtf8();
     testCommentAcceptsExactlyOneThousandBytes();

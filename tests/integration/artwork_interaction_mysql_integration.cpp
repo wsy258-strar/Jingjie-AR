@@ -28,6 +28,7 @@ struct SummaryResult
     bool ok;
     uint64_t count;
     bool liked;
+    uint64_t commentCount;
 };
 
 struct CommentResult
@@ -115,8 +116,8 @@ SummaryResult summary(ArtworkInteractionDAO* dao, const std::string& artworkId, 
     std::promise<SummaryResult> promise;
     std::future<SummaryResult> future = promise.get_future();
     dao->summary(artworkId, userId,
-                 [&promise](bool ok, uint64_t count, bool liked) {
-        SummaryResult result = {ok, count, liked};
+                 [&promise](bool ok, uint64_t count, bool liked, uint64_t commentCount) {
+        SummaryResult result = {ok, count, liked, commentCount};
         promise.set_value(result);
     });
     return waitFor(&future);
@@ -216,6 +217,8 @@ int main()
         const CommentResult third = comment(&dao, artworkId, userId, "第三条勤廉评论");
         CHECK(first.ok && second.ok && third.ok);
         CHECK(first.id < second.id && second.id < third.id);
+        const SummaryResult afterComments = summary(&dao, artworkId, userId);
+        CHECK(afterComments.ok && afterComments.commentCount == 3);
 
         const CommentsResult firstPage = comments(&dao, artworkId, 0, 2);
         CHECK(firstPage.ok && firstPage.comments.size() == 2);

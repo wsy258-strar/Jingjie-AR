@@ -11,17 +11,18 @@
 namespace {
 
 bool querySummary(MYSQL* connection, const std::string& artworkId, uint64_t userId,
-                  uint64_t* count, bool* liked)
+                  uint64_t* count, bool* liked, uint64_t* commentCount)
 {
     MYSQL_STMT* statement = mysql_stmt_init(connection);
     if (!statement) return false;
     const char* sql =
-        "SELECT COUNT(*), EXISTS("
-        "SELECT 1 FROM artwork_likes WHERE artwork_id = ? AND user_id = ?"
-        ") FROM artwork_likes WHERE artwork_id = ?";
+        "SELECT "
+        "(SELECT COUNT(*) FROM artwork_likes WHERE artwork_id = ?), "
+        "EXISTS(SELECT 1 FROM artwork_likes WHERE artwork_id = ? AND user_id = ?), "
+        "(SELECT COUNT(*) FROM artwork_comments WHERE artwork_id = ?)";
     bool ok = mysql_stmt_prepare(statement, sql, std::strlen(sql)) == 0;
 
-    MYSQL_BIND parameters[3];
+    MYSQL_BIND parameters[4];
     std::memset(parameters, 0, sizeof(parameters));
     unsigned long artworkLength = static_cast<unsigned long>(artworkId.size());
     uint64_t user = userId;
@@ -29,17 +30,22 @@ bool querySummary(MYSQL* connection, const std::string& artworkId, uint64_t user
     parameters[0].buffer = const_cast<char*>(artworkId.c_str());
     parameters[0].buffer_length = artworkLength;
     parameters[0].length = &artworkLength;
-    parameters[1].buffer_type = MYSQL_TYPE_LONGLONG;
-    parameters[1].buffer = &user;
-    parameters[1].is_unsigned = 1;
-    parameters[2].buffer_type = MYSQL_TYPE_STRING;
-    parameters[2].buffer = const_cast<char*>(artworkId.c_str());
-    parameters[2].buffer_length = artworkLength;
-    parameters[2].length = &artworkLength;
+    parameters[1].buffer_type = MYSQL_TYPE_STRING;
+    parameters[1].buffer = const_cast<char*>(artworkId.c_str());
+    parameters[1].buffer_length = artworkLength;
+    parameters[1].length = &artworkLength;
+    parameters[2].buffer_type = MYSQL_TYPE_LONGLONG;
+    parameters[2].buffer = &user;
+    parameters[2].is_unsigned = 1;
+    parameters[3].buffer_type = MYSQL_TYPE_STRING;
+    parameters[3].buffer = const_cast<char*>(artworkId.c_str());
+    parameters[3].buffer_length = artworkLength;
+    parameters[3].length = &artworkLength;
 
     uint64_t countValue = 0;
     unsigned char likedValue = 0;
-    MYSQL_BIND results[2];
+    uint64_t commentCountValue = 0;
+    MYSQL_BIND results[3];
     std::memset(results, 0, sizeof(results));
     results[0].buffer_type = MYSQL_TYPE_LONGLONG;
     results[0].buffer = &countValue;
@@ -47,6 +53,9 @@ bool querySummary(MYSQL* connection, const std::string& artworkId, uint64_t user
     results[1].buffer_type = MYSQL_TYPE_TINY;
     results[1].buffer = &likedValue;
     results[1].is_unsigned = 1;
+    results[2].buffer_type = MYSQL_TYPE_LONGLONG;
+    results[2].buffer = &commentCountValue;
+    results[2].is_unsigned = 1;
 
     if (ok) ok = mysql_stmt_bind_param(statement, parameters) == 0;
     if (ok) ok = mysql_stmt_execute(statement) == 0;
@@ -57,6 +66,7 @@ bool querySummary(MYSQL* connection, const std::string& artworkId, uint64_t user
     {
         if (count) *count = countValue;
         if (liked) *liked = likedValue != 0;
+        if (commentCount) *commentCount = commentCountValue;
     }
     return ok;
 }
@@ -99,7 +109,7 @@ void changeLike(DBWorkerPool* pool, const char* sql, bool duplicateIsSuccess,
 
             uint64_t count = 0;
             bool liked = false;
-            if (ok) ok = querySummary(connection.get(), artworkId, userId, &count, &liked);
+            if (ok) ok = querySummary(connection.get(), artworkId, userId, &count, &liked, 0);
             if (callback) callback(ok, changed, ok ? count : 0, ok && liked);
         }))
     {
@@ -132,12 +142,14 @@ void ArtworkInteractionDAO::summary(const std::string& artworkId, uint64_t optio
         [artworkId, optionalUserId, callback](std::shared_ptr<MYSQL> connection) {
             uint64_t count = 0;
             bool liked = false;
+            uint64_t commentCount = 0;
             const bool ok = connection &&
-                querySummary(connection.get(), artworkId, optionalUserId, &count, &liked);
-            if (callback) callback(ok, ok ? count : 0, ok && liked);
+                querySummary(connection.get(), artworkId, optionalUserId, &count, &liked,
+                             &commentCount);
+            if (callback) callback(ok, ok ? count : 0, ok && liked, ok ? commentCount : 0);
         }))
     {
-        if (callback) callback(false, 0, false);
+        if (callback) callback(false, 0, false, 0);
     }
 }
 

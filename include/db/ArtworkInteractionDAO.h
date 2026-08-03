@@ -20,7 +20,8 @@ class ArtworkInteractionDAO : noncopyable
 public:
     typedef std::function<void(bool ok, bool changed, uint64_t count, bool liked)> LikeCallback;
     typedef std::function<void(bool ok, uint64_t id)> CommentCallback;
-    typedef std::function<void(bool ok, uint64_t count, bool liked)> SummaryCallback;
+    typedef std::function<void(bool ok, uint64_t likeCount, bool liked,
+                               uint64_t commentCount)> SummaryCallback;
     typedef std::function<void(bool ok, const std::vector<ArtworkComment>& comments,
                                uint64_t nextBefore)> CommentsCallback;
 

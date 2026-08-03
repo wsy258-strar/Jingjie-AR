@@ -208,7 +208,8 @@ void ArtworkInteractionService::loadSummary(const std::string& artworkId, uint64
         return;
     }
     dao->summary(artworkId, userId,
-                 [callback, lifetime](bool ok, uint64_t count, bool liked) {
+                 [callback, lifetime](bool ok, uint64_t count, bool liked,
+                                      uint64_t commentCount) {
         if (!callback) return;
         if (!active(lifetime))
         {
@@ -222,6 +223,7 @@ void ArtworkInteractionService::loadSummary(const std::string& artworkId, uint64
         }
         ArtworkInteractionResult value;
         value.likeCount = count;
+        value.commentCount = commentCount;
         value.liked = liked;
         callback(value);
     });
@@ -246,7 +248,8 @@ void ArtworkInteractionService::detail(const std::string& token, const std::stri
             return;
         }
         dao->summary(artworkId, userId,
-                     [callback, lifetime](bool ok, uint64_t count, bool liked) {
+                     [callback, lifetime](bool ok, uint64_t count, bool liked,
+                                          uint64_t commentCount) {
             if (!callback) return;
             if (!active(lifetime) || !ok)
             {
@@ -255,6 +258,7 @@ void ArtworkInteractionService::detail(const std::string& token, const std::stri
             }
             ArtworkInteractionResult value;
             value.likeCount = count;
+            value.commentCount = commentCount;
             value.liked = liked;
             callback(value);
         });

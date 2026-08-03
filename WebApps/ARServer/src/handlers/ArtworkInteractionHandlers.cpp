@@ -69,6 +69,7 @@ std::string artworkJson(const ArtworkInfo& artwork, const ArtworkInteractionResu
         writeString(&output, artwork.images[index]);
     }
     output << "],\"likeCount\":" << result.likeCount
+           << ",\"commentCount\":" << result.commentCount
            << ",\"liked\":" << (result.liked ? "true" : "false") << '}';
     return output.str();
 }
