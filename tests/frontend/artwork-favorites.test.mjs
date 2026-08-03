@@ -51,3 +51,19 @@ test("存储读取和写入失败时退回实例内存且不抛错", () => {
   assert.equal(favorites.toggle("work-a"), false);
   assert.equal(favorites.isFavorite("work-a"), false);
 });
+
+test("默认 localStorage 访问抛错时退回内存且不抛错", () => {
+  const descriptor = Object.getOwnPropertyDescriptor(globalThis, "localStorage");
+  Object.defineProperty(globalThis, "localStorage", {
+    configurable: true,
+    get() { throw new Error("SecurityError"); }
+  });
+  try {
+    const favorites = new ArtworkFavorites();
+    assert.equal(favorites.toggle("work-a"), true);
+    assert.equal(favorites.isFavorite("work-a"), true);
+  } finally {
+    if (descriptor) Object.defineProperty(globalThis, "localStorage", descriptor);
+    else delete globalThis.localStorage;
+  }
+});

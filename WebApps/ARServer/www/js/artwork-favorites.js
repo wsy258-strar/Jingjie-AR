@@ -1,9 +1,14 @@
 const FAVORITES_KEY = "jingjie-ar:favorite-artworks";
 
 export class ArtworkFavorites {
-  constructor({ storage = globalThis.localStorage } = {}) {
+  constructor({ storage } = {}) {
     this.storage = storage;
     this.ids = new Set();
+    if (this.storage === undefined) {
+      try {
+        this.storage = globalThis.localStorage;
+      } catch (_) {}
+    }
     try {
       const values = JSON.parse(this.storage?.getItem(FAVORITES_KEY) || "[]");
       if (Array.isArray(values)) values.forEach((value) => this.ids.add(String(value)));

@@ -53,6 +53,65 @@ test("Clipboard API 被拒绝时使用临时文本框复制", async () => {
   assert.equal(textarea.removed, true);
 });
 
+test("Clipboard API 缺失时使用临时文本框复制", async () => {
+  const textarea = { select() {} };
+  const copied = await copyArtworkShareLink({
+    navigatorObject: {},
+    documentObject: {
+      createElement() { return textarea; },
+      body: { appendChild() {} },
+      execCommand() { return true; }
+    },
+    url: "https://x/?artwork=a"
+  });
+
+  assert.equal(copied, true);
+});
+
+test("创建或插入临时文本框失败时优雅返回 false", async () => {
+  const createFailure = await copyArtworkShareLink({
+    navigatorObject: {},
+    documentObject: {
+      createElement() { throw new Error("blocked"); },
+      body: { appendChild() {} },
+      execCommand() { return true; }
+    },
+    url: "https://x/?artwork=a"
+  });
+  const appendFailure = await copyArtworkShareLink({
+    navigatorObject: {},
+    documentObject: {
+      createElement() { return { select() {} }; },
+      body: { appendChild() { throw new Error("blocked"); } },
+      execCommand() { return true; }
+    },
+    url: "https://x/?artwork=a"
+  });
+
+  assert.equal(createFailure, false);
+  assert.equal(appendFailure, false);
+});
+
+test("没有 remove 时通过 parentNode 清理临时文本框", async () => {
+  const textarea = { select() {} };
+  const body = {
+    appendChild(node) { node.parentNode = this; },
+    removeChild(node) { this.removed = node; }
+  };
+  const copied = await copyArtworkShareLink({
+    navigatorObject: {},
+    documentObject: {
+      createElement() { return textarea; },
+      body,
+      execCommand() { return true; }
+    },
+    url: "https://x/?artwork=a"
+  });
+
+  assert.equal(copied, true);
+  assert.equal(body.removed, textarea);
+});
+
 test("没有 document 时无法回退复制会优雅返回 false", async () => {
   const copied = await copyArtworkShareLink({
     navigatorObject: { clipboard: { async writeText() { throw new Error("denied"); } } },

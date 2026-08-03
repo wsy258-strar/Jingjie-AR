@@ -9,24 +9,30 @@ export async function copyArtworkShareLink({
   documentObject = globalThis.document,
   url
 } = {}) {
-  try {
-    await navigatorObject?.clipboard?.writeText(url);
-    return true;
-  } catch (_) {}
-
-  if (!documentObject?.createElement || !documentObject.body?.appendChild || !documentObject.execCommand) {
-    return false;
+  const clipboard = navigatorObject?.clipboard;
+  if (typeof clipboard?.writeText === "function") {
+    try {
+      await clipboard.writeText(url);
+      return true;
+    } catch (_) {}
   }
 
-  const textarea = documentObject.createElement("textarea");
-  textarea.value = url;
-  documentObject.body.appendChild(textarea);
+  let textarea;
   try {
+    if (!documentObject?.createElement || !documentObject.body?.appendChild || !documentObject.execCommand) {
+      return false;
+    }
+    textarea = documentObject.createElement("textarea");
+    textarea.value = url;
+    documentObject.body.appendChild(textarea);
     textarea.select();
     return documentObject.execCommand("copy") === true;
   } catch (_) {
     return false;
   } finally {
-    textarea.remove?.();
+    try {
+      if (typeof textarea?.remove === "function") textarea.remove();
+      else textarea?.parentNode?.removeChild?.(textarea);
+    } catch (_) {}
   }
 }
