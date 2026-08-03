@@ -84,6 +84,20 @@ function modalFixture() {
   return { root, card, tabsContainer, elements, galleryTools, documentObject };
 }
 
+function commentsModal({ request, nextBefore = 0, scrollTop = 0 } = {}) {
+  const modal = Object.create(ArtworkModal.prototype);
+  modal.api = { request };
+  modal.currentArtwork = { artworkId: "work-a", liked: false };
+  modal.modalGeneration = 1;
+  modal.nextBefore = nextBefore;
+  modal.commentList = element();
+  modal.commentsMore = element();
+  modal.commentsScroller = { scrollTop };
+  modal.document = { createElement: element };
+  modal.notify = (message) => assert.fail(message);
+  return modal;
+}
+
 test("失效用户令牌不阻断公开作品详情，清理后只降级重试一次", async () => {
   const userOptions = [];
   const api = {
@@ -246,4 +260,46 @@ test("文字热点后打开作品恢复完整画廊与默认说明标签", async
   assert.equal(fixture.elements["artwork-comments-panel"].hidden, false);
   assert.equal(fixture.card.dataset.mobileTab, "details");
   assert.equal(modal.tabButtons[0].attributes["aria-selected"], "true");
+});
+
+test("重载第一页评论在成功渲染后才回到顶部", async () => {
+  let resolveRequest;
+  const pending = new Promise((resolve) => { resolveRequest = resolve; });
+  const modal = commentsModal({ request: async () => pending, scrollTop: 160 });
+
+  const loading = modal.loadComments(true, modal.artworkContext());
+  assert.equal(modal.commentsScroller.scrollTop, 160, "请求期间不能提前改变用户位置");
+  resolveRequest({
+    comments: [{ username: "访客", content: "新评论" }],
+    nextBefore: 0
+  });
+  await loading;
+
+  assert.equal(modal.commentsScroller.scrollTop, 0);
+});
+
+test("追加评论不改变已有滚动位置", async () => {
+  const modal = commentsModal({
+    nextBefore: 10,
+    scrollTop: 120,
+    request: async () => ({ comments: [{ username: "访客", content: "更早评论" }], nextBefore: 0 })
+  });
+
+  await modal.loadComments(false, modal.artworkContext());
+
+  assert.equal(modal.commentsScroller.scrollTop, 120);
+});
+
+test("评论请求失败时不改变已有滚动位置", async () => {
+  const notifications = [];
+  const modal = commentsModal({
+    scrollTop: 88,
+    request: async () => { throw new Error("网络异常"); }
+  });
+  modal.notify = (message) => notifications.push(message);
+
+  await modal.loadComments(true, modal.artworkContext());
+
+  assert.equal(modal.commentsScroller.scrollTop, 88);
+  assert.deepEqual(notifications, ["网络异常"]);
 });

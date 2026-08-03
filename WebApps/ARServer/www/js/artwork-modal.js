@@ -54,6 +54,7 @@ export class ArtworkModal {
     this.likeCount = documentObject.getElementById("artwork-like-count");
     this.commentList = documentObject.getElementById("comment-list");
     this.commentsMore = documentObject.getElementById("comments-more");
+    this.commentsScroller = this.root.querySelector(".artwork-comments-scroll");
     this.commentForm = documentObject.getElementById("comment-form");
     this.commentInput = documentObject.getElementById("comment-input");
     this.currentArtwork = null;
@@ -228,6 +229,7 @@ export class ArtworkModal {
       }
       this.nextBefore = Number(result.nextBefore) || 0;
       this.commentsMore.hidden = !this.nextBefore;
+      if (reset && this.commentsScroller) this.commentsScroller.scrollTop = 0;
     } catch (error) {
       if (this.isCurrent(context)) this.notify(error.message || "评论暂时无法加载");
     }
