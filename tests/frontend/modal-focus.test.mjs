@@ -78,3 +78,23 @@ test("焦点循环排除隐藏区域中的后代控件", () => {
   modal.querySelectorAll = () => [visible, hiddenDescendant];
   assert.deepEqual(manager.focusableElements(modal), [visible]);
 });
+
+test("焦点循环排除 aria-hidden 标签面板中的控件", () => {
+  const manager = new ModalFocusManager({ documentObject, backgroundSelector: ".museum-shell" });
+  const modal = node("modal");
+  const visible = node("visible");
+  const hiddenTabControl = node("hidden-tab-control");
+  hiddenTabControl.closest = (selector) => selector.includes('[aria-hidden="true"]')
+    ? { attributes: new Map([["aria-hidden", "true"]]) } : null;
+  modal.querySelectorAll = () => [visible, hiddenTabControl];
+  modal.contains = (element) => element === visible || element === hiddenTabControl;
+
+  manager.open(modal, { initialFocus: visible });
+  documentObject.activeElement = visible;
+  let prevented = false;
+  manager.handleKeydown({ key: "Tab", shiftKey: false, preventDefault() { prevented = true; } });
+
+  assert.equal(prevented, true);
+  assert.equal(documentObject.activeElement, visible);
+  manager.close(modal);
+});

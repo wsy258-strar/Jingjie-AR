@@ -13,14 +13,27 @@ const { ArtworkGallery } = await import(pathToFileURL(join(target, "artwork-gall
 process.once("exit", () => rmSync(target, { recursive: true, force: true }));
 
 function element() {
+  const listeners = new Map();
   return {
-    addEventListener() {},
+    addEventListener(type, listener) { listeners.set(type, listener); },
+    dispatchEvent(event) {
+      listeners.get(event.type)?.(event);
+      return !event.defaultPrevented;
+    },
     disabled: false,
     hidden: false,
     height: 200,
     width: 300,
+    clientHeight: 200,
+    clientWidth: 300,
     style: {},
-    textContent: ""
+    textContent: "",
+    setPointerCapture(pointerId) { this.capturedPointerId = pointerId; },
+    releasePointerCapture(pointerId) {
+      this.releasedPointerIds = [...(this.releasedPointerIds || []), pointerId];
+      if (this.capturedPointerId === pointerId) this.capturedPointerId = null;
+    },
+    hasPointerCapture(pointerId) { return this.capturedPointerId === pointerId; }
   };
 }
 
@@ -42,7 +55,12 @@ function createGallery(overrides = {}) {
 }
 
 function pointer(clientX, clientY) {
-  return { clientX, clientY, pointerId: 1, preventDefault() {} };
+  return {
+    clientX,
+    clientY,
+    pointerId: 1,
+    preventDefault() { this.defaultPrevented = true; }
+  };
 }
 
 test("缩放限制在 1 至 3 且重置恢复初始状态", () => {
@@ -104,4 +122,74 @@ test("当前图片失败时保留导航并显示中文错误", () => {
   assert.equal(gallery.status.textContent, "图片暂时无法加载");
   assert.equal(gallery.next(), true);
   assert.equal(gallery.status.textContent, "");
+});
+
+test("舞台只为图片拖动捕获指针，并在取消时释放对应捕获", () => {
+  const gallery = createGallery();
+  gallery.setImages(["/a.jpg"], "作品");
+  gallery.zoomIn();
+  const buttonEvent = {
+    ...pointer(100, 80),
+    type: "pointerdown",
+    target: { closest: (selector) => selector === "button, input, textarea, select, a" ? {} : null }
+  };
+  gallery.stage.dispatchEvent(buttonEvent);
+  assert.equal(gallery.pointer, null);
+  assert.equal(gallery.stage.capturedPointerId, undefined);
+
+  const down = { ...pointer(100, 80), type: "pointerdown", target: gallery.image };
+  gallery.stage.dispatchEvent(down);
+  assert.equal(gallery.stage.capturedPointerId, 1);
+  gallery.stage.dispatchEvent({ ...pointer(60, 80), type: "pointermove", target: gallery.image });
+  assert.notEqual(gallery.offsetX, 0);
+
+  const dragStart = { type: "dragstart", preventDefault() { this.defaultPrevented = true; } };
+  gallery.image.dispatchEvent(dragStart);
+  assert.equal(dragStart.defaultPrevented, true);
+
+  gallery.stage.dispatchEvent({ ...pointer(60, 80), type: "pointercancel", target: gallery.image });
+  assert.equal(gallery.pointer, null);
+  assert.equal(gallery.stage.capturedPointerId, null);
+
+  gallery.stage.dispatchEvent(down);
+  gallery.stage.capturedPointerId = null;
+  gallery.stage.dispatchEvent({ ...pointer(60, 80), type: "lostpointercapture", target: gallery.image });
+  assert.equal(gallery.pointer, null);
+  assert.deepEqual(gallery.stage.releasedPointerIds, [1]);
+});
+
+test("缩小时按新的图片边界重新夹紧拖动位移", () => {
+  const gallery = createGallery();
+  gallery.setImages(["/a.jpg"], "作品");
+  for (let index = 0; index < 20; index += 1) gallery.zoomIn();
+  gallery.offsetX = 300;
+  gallery.offsetY = -200;
+
+  gallery.zoomOut();
+
+  assert.equal(gallery.scale, 2.5);
+  assert.deepEqual([gallery.offsetX, gallery.offsetY], [225, -150]);
+});
+
+test("舞台尺寸变化后重新夹紧当前图片位移", () => {
+  const originalResizeObserver = globalThis.ResizeObserver;
+  let notifyResize = () => {};
+  globalThis.ResizeObserver = class {
+    constructor(callback) { notifyResize = callback; }
+    observe() {}
+  };
+
+  try {
+    const gallery = createGallery();
+    gallery.setImages(["/a.jpg"], "作品");
+    for (let index = 0; index < 20; index += 1) gallery.zoomIn();
+    gallery.offsetX = 300;
+    gallery.stage.clientWidth = 400;
+
+    notifyResize();
+
+    assert.equal(gallery.offsetX, 250);
+  } finally {
+    globalThis.ResizeObserver = originalResizeObserver;
+  }
 });

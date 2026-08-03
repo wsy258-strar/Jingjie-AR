@@ -639,7 +639,7 @@ textarea { resize: vertical; }
   text-align: center;
 }
 
-@media (max-width: 820px) {
+@media (max-width: 820px), (max-width: 900px) and (max-height: 420px) and (orientation: landscape) {
   .floating-header {
     top: .65rem;
     right: 4.1rem;
@@ -774,6 +774,51 @@ textarea { resize: vertical; }
     max-height: calc(100dvh - 10rem);
     overflow-y: auto;
   }
+}
+
+@media (max-width: 900px) and (max-height: 420px) and (orientation: landscape) {
+  .modal { padding: .5rem; }
+
+  .artwork-card {
+    width: calc(100vw - 1rem);
+    height: calc(100dvh - 1rem);
+    max-height: calc(100dvh - 1rem);
+  }
+
+  .artwork-header { padding: .6rem 3rem .5rem 1rem; }
+
+  .artwork-header .modal-kicker { display: none; }
+
+  .artwork-header h2 { font-size: 1.1rem; }
+
+  .artwork-layout { grid-template-rows: minmax(120px, 2fr) auto minmax(0, 3fr); }
+
+  .artwork-gallery { padding: .5rem; }
+
+  .artwork-tabs button { padding: .45rem; }
+
+  .artwork-comments-scroll { padding: .5rem 1rem .35rem 0; }
+
+  .artwork-comments-scroll h3 { margin: 0 0 .35rem; }
+
+  .artwork-interaction-dock {
+    gap: .35rem;
+    padding: .35rem 1rem .5rem 0;
+  }
+
+  .artwork-interaction-dock .like-button { padding: .42rem; }
+
+  .comment-form { gap: .25rem; }
+
+  .comment-form label { display: none; }
+
+  .artwork-interaction-dock textarea {
+    min-height: 2.6rem;
+    max-height: 2.6rem;
+    padding: .35rem;
+  }
+
+  .artwork-interaction-dock .accent-button { padding: .42rem .7rem; }
 }
 
 @media (max-width: 520px) {

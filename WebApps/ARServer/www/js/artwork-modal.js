@@ -2,6 +2,8 @@
 import { ApiError } from "./api-client.js";
 import { ArtworkGallery } from "./artwork-gallery.js";
 
+const MOBILE_TAB_QUERY = "(max-width: 820px), (max-width: 900px) and (max-height: 420px) and (orientation: landscape)";
+
 function formatCount(value) {
   const count = Number(value);
   return Number.isFinite(count) && count >= 0 ? String(count) : "0";
@@ -45,9 +47,11 @@ export class ArtworkModal {
       resetButton: documentObject.getElementById("artwork-reset")
     });
     this.text = documentObject.getElementById("artwork-text");
+    this.detailsPanel = documentObject.getElementById("artwork-details-panel");
     this.interactions = documentObject.getElementById("artwork-comments-panel");
     this.tabs = this.root.querySelector(".artwork-tabs");
     this.tabButtons = Array.from(this.root.querySelectorAll("[data-artwork-tab]"));
+    this.mobileTabQuery = documentObject.defaultView?.matchMedia?.(MOBILE_TAB_QUERY) || null;
     this.likeButton = documentObject.getElementById("artwork-like");
     this.likeSymbol = documentObject.getElementById("artwork-like-symbol");
     this.likeLabel = documentObject.getElementById("artwork-like-label");
@@ -63,6 +67,9 @@ export class ArtworkModal {
     this.protectedActionPending = false;
     this.modalGeneration = 0;
     this.bindEvents();
+    this.mobileTabQuery?.addEventListener("change", () => {
+      this.setActiveTab(this.card.dataset.mobileTab);
+    });
   }
 
   bindEvents() {
@@ -100,7 +107,6 @@ export class ArtworkModal {
     });
     this.currentArtwork = null;
     this.nextBefore = 0;
-    this.setActiveTab("details");
     this.title.textContent = "作品加载中…";
     this.text.textContent = "";
     this.galleryViewer.clear();
@@ -110,6 +116,7 @@ export class ArtworkModal {
     this.tabs.hidden = false;
     this.galleryTools.hidden = false;
     this.interactions.hidden = false;
+    this.setActiveTab("details");
     this.loadController = new AbortController();
 
     try {
@@ -136,7 +143,6 @@ export class ArtworkModal {
       onEscape: () => this.close()
     });
     this.currentArtwork = null;
-    this.setActiveTab("details");
     this.title.textContent = hotspot.title || "展览信息";
     this.text.textContent = hotspot.text || "";
     this.galleryViewer.clear();
@@ -146,6 +152,7 @@ export class ArtworkModal {
     this.tabs.hidden = true;
     this.galleryTools.hidden = true;
     this.interactions.hidden = true;
+    this.setActiveTab("details");
   }
 
   renderDetail(detail) {
@@ -161,6 +168,22 @@ export class ArtworkModal {
     this.tabButtons.forEach((button) => {
       button.setAttribute("aria-selected", String(button.dataset.artworkTab === activeTab));
     });
+    const isTextOnly = this.card.classList?.contains("is-text-only");
+    const useMobileTabs = Boolean(this.mobileTabQuery?.matches);
+    this.setPanelAccessibility(
+      this.detailsPanel,
+      !isTextOnly && useMobileTabs && activeTab !== "details"
+    );
+    this.setPanelAccessibility(
+      this.interactions,
+      Boolean(isTextOnly || (useMobileTabs && activeTab !== "comments"))
+    );
+  }
+
+  setPanelAccessibility(panel, hidden) {
+    if (!panel) return;
+    panel.inert = hidden;
+    panel.setAttribute("aria-hidden", String(hidden));
   }
 
   updateLike(liked, count) {
@@ -199,40 +222,46 @@ export class ArtworkModal {
 
   async loadComments(reset, context = this.artworkContext()) {
     if (!context || !this.isCurrent(context)) return;
-    if (reset) {
-      this.nextBefore = 0;
-      this.commentList.textContent = "";
-    }
     const artworkId = context.artworkId;
-    const query = this.nextBefore ? `?before=${encodeURIComponent(this.nextBefore)}&limit=20` : "?limit=20";
+    const before = reset ? 0 : this.nextBefore;
+    const query = before ? `?before=${encodeURIComponent(before)}&limit=20` : "?limit=20";
     try {
       const result = await this.api.request(
         `/api/artworks/${encodeURIComponent(artworkId)}/comments${query}`
       );
       if (!this.isCurrent(context)) return;
       const comments = Array.isArray(result.comments) ? result.comments : [];
-      if (!comments.length && reset) {
-        const empty = this.document.createElement("p");
-        empty.className = "empty-comments";
-        empty.textContent = "还没有评论。";
-        this.commentList.appendChild(empty);
-      }
-      for (const comment of comments) {
-        const item = this.document.createElement("article");
-        item.className = "comment-item";
-        const author = this.document.createElement("strong");
-        const body = this.document.createElement("p");
-        author.textContent = comment.username || "访客";
-        body.textContent = comment.content || "";
-        item.append(author, body);
-        this.commentList.appendChild(item);
-      }
-      this.nextBefore = Number(result.nextBefore) || 0;
-      this.commentsMore.hidden = !this.nextBefore;
+      const items = this.createCommentItems(comments, reset);
+      const nextBefore = Number(result.nextBefore) || 0;
+      if (reset) this.commentList.replaceChildren(...items);
+      else this.commentList.append(...items);
+      this.nextBefore = nextBefore;
+      this.commentsMore.hidden = !nextBefore;
       if (reset && this.commentsScroller) this.commentsScroller.scrollTop = 0;
     } catch (error) {
       if (this.isCurrent(context)) this.notify(error.message || "评论暂时无法加载");
     }
+  }
+
+  createCommentItems(comments, reset) {
+    const items = [];
+    if (!comments.length && reset) {
+      const empty = this.document.createElement("p");
+      empty.className = "empty-comments";
+      empty.textContent = "还没有评论。";
+      items.push(empty);
+    }
+    for (const comment of comments) {
+      const item = this.document.createElement("article");
+      item.className = "comment-item";
+      const author = this.document.createElement("strong");
+      const body = this.document.createElement("p");
+      author.textContent = comment.username || "访客";
+      body.textContent = comment.content || "";
+      item.append(author, body);
+      items.push(item);
+    }
+    return items;
   }
 
   async submitComment(context, content) {

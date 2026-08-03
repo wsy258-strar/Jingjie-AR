@@ -1,6 +1,7 @@
 const MIN_SCALE = 1;
 const MAX_SCALE = 3;
 const ZOOM_FACTOR = 1.2;
+const INTERACTIVE_SELECTOR = "button, input, textarea, select, a";
 
 export function clampScale(value) {
   return Math.min(MAX_SCALE, Math.max(MIN_SCALE, Number(value) || MIN_SCALE));
@@ -54,7 +55,10 @@ export class ArtworkGallery {
   zoomOut() {
     this.scale = clampScale(this.scale / ZOOM_FACTOR);
     if (this.scale === 1) this.resetView();
-    else this.renderTransform();
+    else {
+      this.constrainOffsets();
+      this.renderTransform();
+    }
     return this.scale;
   }
 
@@ -74,7 +78,17 @@ export class ArtworkGallery {
     this.stage?.addEventListener("pointerdown", (event) => this.handlePointerDown(event));
     this.stage?.addEventListener("pointermove", (event) => this.handlePointerMove(event));
     this.stage?.addEventListener("pointerup", (event) => this.handlePointerUp(event));
+    this.stage?.addEventListener("pointercancel", (event) => this.handlePointerCancel(event));
+    this.stage?.addEventListener("lostpointercapture", (event) => this.handlePointerCancel(event));
+    this.image?.addEventListener("dragstart", (event) => event.preventDefault());
     this.root?.addEventListener("keydown", (event) => this.handleKeydown(event));
+    if (this.stage && typeof globalThis.ResizeObserver === "function") {
+      this.resizeObserver = new globalThis.ResizeObserver(() => {
+        this.constrainOffsets();
+        this.renderTransform();
+      });
+      this.resizeObserver.observe(this.stage);
+    }
   }
 
   render() {
@@ -119,8 +133,13 @@ export class ArtworkGallery {
       "translate3d(" + this.offsetX + "px," + this.offsetY + "px,0) scale(" + this.scale + ")";
   }
 
+  constrainOffsets() {
+    this.offsetX = clampOffset(this.offsetX, this.overflow("width"));
+    this.offsetY = clampOffset(this.offsetY, this.overflow("height"));
+  }
+
   handlePointerDown(event) {
-    if (!this.images.length) return;
+    if (!this.images.length || event.target?.closest?.(INTERACTIVE_SELECTOR)) return;
     this.pointer = {
       id: event.pointerId,
       startX: event.clientX,
@@ -145,13 +164,25 @@ export class ArtworkGallery {
     if (!this.isActivePointer(event)) return;
     const pointer = this.pointer;
     this.pointer = null;
-    this.stage?.releasePointerCapture?.(event.pointerId);
+    this.releasePointerCapture(event.pointerId);
     if (this.scale !== 1) return;
     const deltaX = event.clientX - pointer.startX;
     const deltaY = event.clientY - pointer.startY;
     if (Math.abs(deltaX) < 50 || Math.abs(deltaX) <= Math.abs(deltaY)) return;
     if (deltaX < 0) this.next();
     else this.previous();
+  }
+
+  handlePointerCancel(event) {
+    if (!this.isActivePointer(event)) return;
+    this.releasePointerCapture(event.pointerId);
+    this.pointer = null;
+  }
+
+  releasePointerCapture(pointerId) {
+    if (!this.stage?.releasePointerCapture) return;
+    if (!this.stage.hasPointerCapture || this.stage.hasPointerCapture(pointerId))
+      this.stage.releasePointerCapture(pointerId);
   }
 
   handleKeydown(event) {

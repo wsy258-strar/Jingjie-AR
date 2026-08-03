@@ -58,7 +58,7 @@ export class ModalFocusManager {
   focusableElements(modal) {
     return Array.from(modal.querySelectorAll(FOCUSABLE_SELECTOR)).filter((element) => {
       const hiddenAncestor = typeof element.closest === "function"
-        ? element.closest("[hidden],[inert]") : null;
+        ? element.closest('[hidden],[inert],[aria-hidden="true"]') : null;
       return !hiddenAncestor && !element.hidden && !element.disabled &&
         element.getAttribute?.("aria-hidden") !== "true";
     });

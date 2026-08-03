@@ -35,12 +35,14 @@ function element() {
     dataset: {},
     style: {},
     hidden: false,
+    inert: false,
     textContent: "",
     value: "",
     children: [],
     addEventListener() {},
     append(...children) { this.children.push(...children); },
     appendChild(child) { this.children.push(child); },
+    replaceChildren(...children) { this.children = children; },
     focus() {},
     querySelector() { return null; },
     setAttribute(name, value) { attributes[name] = String(value); }
@@ -68,7 +70,7 @@ function modalFixture() {
     "artwork-title", "artwork-gallery", "artwork-gallery-stage", "artwork-image",
     "artwork-prev", "artwork-next", "artwork-image-count", "artwork-image-status",
     "artwork-zoom-in", "artwork-zoom-out", "artwork-reset", "artwork-text",
-    "artwork-comments-panel", "artwork-like", "artwork-like-symbol", "artwork-like-label",
+    "artwork-details-panel", "artwork-comments-panel", "artwork-like", "artwork-like-symbol", "artwork-like-label",
     "artwork-like-count", "comment-list", "comments-more", "comment-form", "comment-input"
   ];
   const elements = Object.fromEntries(ids.map((id) => [id, element()]));
@@ -168,13 +170,36 @@ test("渲染详情把图片交给画廊", () => {
 
 test("移动标签更新卡片状态和 aria-selected", () => {
   const modal = Object.create(ArtworkModal.prototype);
-  modal.card = { dataset: {} };
+  modal.card = element();
   modal.tabButtons = [tabButton("details"), tabButton("comments")];
+  modal.detailsPanel = element();
+  modal.interactions = element();
+  modal.mobileTabQuery = { matches: true };
 
   modal.setActiveTab("comments");
 
   assert.equal(modal.card.dataset.mobileTab, "comments");
   assert.equal(modal.tabButtons[1].attributes["aria-selected"], "true");
+  assert.equal(modal.detailsPanel.inert, true);
+  assert.equal(modal.detailsPanel.attributes["aria-hidden"], "true");
+  assert.equal(modal.interactions.inert, false);
+  assert.equal(modal.interactions.attributes["aria-hidden"], "false");
+});
+
+test("桌面端切换标签不会使任何面板永久不可访问", () => {
+  const modal = Object.create(ArtworkModal.prototype);
+  modal.card = element();
+  modal.tabButtons = [tabButton("details"), tabButton("comments")];
+  modal.detailsPanel = element();
+  modal.interactions = element();
+  modal.mobileTabQuery = { matches: false };
+
+  modal.setActiveTab("comments");
+
+  assert.equal(modal.detailsPanel.inert, false);
+  assert.equal(modal.detailsPanel.attributes["aria-hidden"], "false");
+  assert.equal(modal.interactions.inert, false);
+  assert.equal(modal.interactions.attributes["aria-hidden"], "false");
 });
 
 test("打开作品保留预置画廊舞台并使用新的评论面板 ID", async () => {
@@ -220,6 +245,8 @@ test("文字热点隐藏画廊、标签、工具栏与互动区", () => {
   assert.equal(fixture.tabsContainer.hidden, true);
   assert.equal(fixture.galleryTools.hidden, true);
   assert.equal(fixture.elements["artwork-comments-panel"].hidden, true);
+  assert.equal(fixture.elements["artwork-comments-panel"].inert, true);
+  assert.equal(fixture.elements["artwork-comments-panel"].attributes["aria-hidden"], "true");
   assert.equal(fixture.card.dataset.mobileTab, "details");
 });
 
@@ -258,6 +285,9 @@ test("文字热点后打开作品恢复完整画廊与默认说明标签", async
   assert.equal(fixture.tabsContainer.hidden, false);
   assert.equal(fixture.galleryTools.hidden, false);
   assert.equal(fixture.elements["artwork-comments-panel"].hidden, false);
+  assert.equal(fixture.elements["artwork-details-panel"].inert, false);
+  assert.equal(fixture.elements["artwork-comments-panel"].inert, false);
+  assert.equal(fixture.elements["artwork-comments-panel"].attributes["aria-hidden"], "false");
   assert.equal(fixture.card.dataset.mobileTab, "details");
   assert.equal(modal.tabButtons[0].attributes["aria-selected"], "true");
 });
@@ -302,6 +332,48 @@ test("评论请求失败时不改变已有滚动位置", async () => {
 
   assert.equal(modal.commentsScroller.scrollTop, 88);
   assert.deepEqual(notifications, ["网络异常"]);
+});
+
+test("重载第一页评论失败时保留旧评论、游标和加载更多状态", async () => {
+  const notifications = [];
+  const modal = commentsModal({
+    nextBefore: 42,
+    scrollTop: 88,
+    request: async () => { throw new Error("网络异常"); }
+  });
+  const oldComment = { textContent: "旧评论" };
+  modal.commentList.children = [oldComment];
+  modal.commentsMore.hidden = false;
+  modal.notify = (message) => notifications.push(message);
+
+  await modal.loadComments(true, modal.artworkContext());
+
+  assert.deepEqual(modal.commentList.children, [oldComment]);
+  assert.equal(modal.nextBefore, 42);
+  assert.equal(modal.commentsMore.hidden, false);
+  assert.equal(modal.commentsScroller.scrollTop, 88);
+  assert.deepEqual(notifications, ["网络异常"]);
+});
+
+test("重载第一页评论成功后原子替换旧评论与分页状态", async () => {
+  const modal = commentsModal({
+    nextBefore: 42,
+    scrollTop: 88,
+    request: async () => ({
+      comments: [{ username: "新访客", content: "最新评论" }],
+      nextBefore: 0
+    })
+  });
+  modal.commentList.children = [{ textContent: "旧评论" }];
+  modal.commentsMore.hidden = false;
+
+  await modal.loadComments(true, modal.artworkContext());
+
+  assert.equal(modal.commentList.children.length, 1);
+  assert.equal(modal.commentList.children[0].className, "comment-item");
+  assert.equal(modal.nextBefore, 0);
+  assert.equal(modal.commentsMore.hidden, true);
+  assert.equal(modal.commentsScroller.scrollTop, 0);
 });
 
 test("迟到的评论成功响应不污染切换后的作品弹窗", async () => {
