@@ -23,6 +23,55 @@ for id in artwork-gallery-stage artwork-image artwork-prev artwork-next \
   artwork-image-status artwork-details-panel artwork-comments-panel; do
   grep -Fq "id=\"$id\"" "$index"
 done
+
+for icon in artwork-tool-icon-zoom-in artwork-tool-icon-zoom-out artwork-tool-icon-reset; do
+  grep -Fq "class=\"artwork-tool-icon $icon\"" "$index"
+done
+
+python3 - "$index" <<'PY'
+from html.parser import HTMLParser
+from pathlib import Path
+import sys
+
+class ToolIconAudit(HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self.current_button = None
+        self.buttons = {}
+
+    def handle_starttag(self, tag, attrs):
+        attrs = dict(attrs)
+        if tag == "button" and attrs.get("id") in {
+            "artwork-zoom-in", "artwork-zoom-out", "artwork-reset"
+        }:
+            self.current_button = attrs["id"]
+            self.buttons[self.current_button] = {"svg": False, "text": ""}
+        elif tag == "svg" and self.current_button:
+            assert attrs.get("aria-hidden") == "true"
+            self.buttons[self.current_button]["svg"] = True
+
+    def handle_data(self, data):
+        if self.current_button:
+            self.buttons[self.current_button]["text"] += data.strip()
+
+    def handle_endtag(self, tag):
+        if tag == "button":
+            self.current_button = None
+
+audit = ToolIconAudit()
+audit.feed(Path(sys.argv[1]).read_text(encoding="utf-8"))
+assert audit.buttons == {
+    "artwork-zoom-in": {"svg": True, "text": "放大"},
+    "artwork-zoom-out": {"svg": True, "text": "缩小"},
+    "artwork-reset": {"svg": True, "text": "重置"},
+}
+PY
+
+grep -Fq '.artwork-gallery-tools {' "$css"
+grep -Fq 'bottom: .75rem;' "$css"
+grep -Fq 'font-size: .78rem;' "$css"
+grep -Fq '.artwork-tool-icon {' "$css"
+
 grep -Fq 'role="tablist"' "$index"
 grep -Fq 'data-artwork-tab="details"' "$index"
 grep -Fq 'data-artwork-tab="comments"' "$index"

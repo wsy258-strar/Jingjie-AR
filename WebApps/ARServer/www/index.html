@@ -88,9 +88,26 @@
               <span id="artwork-image-count" class="artwork-image-count" aria-live="polite"></span>
               <p id="artwork-image-status" class="artwork-image-status" role="status" aria-live="polite"></p>
               <div class="artwork-gallery-tools" role="group" aria-label="图片工具">
-                <button id="artwork-zoom-in" type="button" aria-label="放大图片">放大</button>
-                <button id="artwork-zoom-out" type="button" aria-label="缩小图片">缩小</button>
-                <button id="artwork-reset" type="button" aria-label="重置图片视图">重置</button>
+                <button id="artwork-zoom-in" type="button" aria-label="放大图片">
+                  <svg class="artwork-tool-icon artwork-tool-icon-zoom-in" aria-hidden="true" viewBox="0 0 24 24">
+                    <circle cx="10.5" cy="10.5" r="6.5"></circle>
+                    <path d="m15.5 15.5 5 5M10.5 7.5v6M7.5 10.5h6"></path>
+                  </svg>
+                  <span>放大</span>
+                </button>
+                <button id="artwork-zoom-out" type="button" aria-label="缩小图片">
+                  <svg class="artwork-tool-icon artwork-tool-icon-zoom-out" aria-hidden="true" viewBox="0 0 24 24">
+                    <circle cx="10.5" cy="10.5" r="6.5"></circle>
+                    <path d="m15.5 15.5 5 5M7.5 10.5h6"></path>
+                  </svg>
+                  <span>缩小</span>
+                </button>
+                <button id="artwork-reset" type="button" aria-label="重置图片视图">
+                  <svg class="artwork-tool-icon artwork-tool-icon-reset" aria-hidden="true" viewBox="0 0 24 24">
+                    <path d="M4 8V3m0 5h5M5.5 7a8 8 0 1 1-1.2 8"></path>
+                  </svg>
+                  <span>重置</span>
+                </button>
               </div>
             </div>
           </section>
