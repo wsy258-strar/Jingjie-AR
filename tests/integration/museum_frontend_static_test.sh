@@ -20,7 +20,9 @@ grep -Fq 'id="notice"' "$index"
 
 for id in artwork-gallery-stage artwork-image artwork-prev artwork-next \
   artwork-image-count artwork-zoom-in artwork-zoom-out artwork-reset \
-  artwork-image-status artwork-details-panel artwork-comments-panel; do
+  artwork-image-status artwork-details-panel artwork-comments-panel \
+  artwork-like artwork-like-count artwork-favorite artwork-favorite-label \
+  artwork-comment-jump artwork-comment-count artwork-share artwork-comments-total; do
   grep -Fq "id=\"$id\"" "$index"
 done
 
@@ -89,6 +91,49 @@ assert audit.buttons == {
         "text": "重置",
     },
 }
+PY
+
+python3 - "$index" <<'PY'
+from html.parser import HTMLParser
+from pathlib import Path
+import sys
+
+class ActionIconAudit(HTMLParser):
+    action_ids = {
+        "artwork-like", "artwork-favorite", "artwork-comment-jump", "artwork-share"
+    }
+
+    def __init__(self):
+        super().__init__()
+        self.current_button = None
+        self.buttons = {}
+
+    def handle_starttag(self, tag, attrs):
+        attrs = dict(attrs)
+        if tag == "button" and attrs.get("id") in self.action_ids:
+            self.current_button = attrs["id"]
+            self.buttons[self.current_button] = {
+                "aria_label": attrs.get("aria-label"),
+                "aria_pressed": attrs.get("aria-pressed"),
+                "svg_aria_hidden": [],
+            }
+        elif tag == "svg" and self.current_button:
+            self.buttons[self.current_button]["svg_aria_hidden"].append(attrs.get("aria-hidden"))
+
+    def handle_endtag(self, tag):
+        if tag == "button":
+            self.current_button = None
+
+audit = ActionIconAudit()
+audit.feed(Path(sys.argv[1]).read_text(encoding="utf-8"))
+assert set(audit.buttons) == ActionIconAudit.action_ids
+assert all(button["svg_aria_hidden"] == ["true"] for button in audit.buttons.values())
+assert audit.buttons["artwork-like"]["aria_label"] == "点赞作品"
+assert audit.buttons["artwork-like"]["aria_pressed"] == "false"
+assert audit.buttons["artwork-favorite"]["aria_label"] == "收藏作品"
+assert audit.buttons["artwork-favorite"]["aria_pressed"] == "false"
+assert audit.buttons["artwork-comment-jump"]["aria_label"] == "查看观众评论"
+assert audit.buttons["artwork-share"]["aria_label"] == "复制展品分享链接"
 PY
 
 python3 - "$css" <<'PY'
@@ -170,17 +215,60 @@ assert_properties(
     selector_block(css, ".artwork-image-status"),
     {"left": ".75rem", "right": "auto", "bottom": ".75rem"},
 )
+assert_properties(
+    "desktop artwork content",
+    selector_block(css, ".artwork-content"),
+    {"grid-template-rows": "minmax(0, 3fr) auto minmax(0, 2fr)"},
+)
+assert_properties(
+    "desktop artwork interactions",
+    selector_block(css, ".artwork-interactions"),
+    {"grid-template-rows": "auto minmax(0, 1fr) auto"},
+)
+assert_properties(
+    "desktop comment jump",
+    selector_block(css, "#artwork-comment-jump"),
+    {"display": "none"},
+)
+
+mobile_condition = "(max-width: 820px), (max-width: 900px) and (max-height: 420px) and (orientation: landscape)"
+mobile_media = media_block(mobile_condition)
+assert_properties(
+    "mobile artwork layout",
+    selector_block(mobile_media, ".artwork-layout"),
+    {
+        "display": "block",
+        "overflow-y": "auto",
+        "padding-bottom": "calc(var(--artwork-composer-height) + env(safe-area-inset-bottom))",
+    },
+)
+assert_properties(
+    "mobile action bar",
+    selector_block(mobile_media, ".artwork-action-bar"),
+    {"grid-template-columns": "repeat(4, minmax(0, 1fr))"},
+)
+assert_properties(
+    "mobile comment jump",
+    selector_block(mobile_media, "#artwork-comment-jump"),
+    {"display": "inline-flex"},
+)
+assert_properties(
+    "mobile comment composer",
+    selector_block(mobile_media, ".artwork-comment-composer"),
+    {
+        "position": "absolute",
+        "right": "0",
+        "bottom": "0",
+        "left": "0",
+        "padding-bottom": "env(safe-area-inset-bottom)",
+    },
+)
 
 short_landscape = "(max-width: 900px) and (max-height: 420px) and (orientation: landscape)"
 assert css.index(f"@media {short_landscape}") < css.index("@media (max-width: 520px)"), (
     "narrow mobile overrides must follow short landscape overrides"
 )
 short_media = media_block(short_landscape)
-assert_properties(
-    "short landscape artwork layout",
-    selector_block(short_media, ".artwork-layout"),
-    {"grid-template-rows": "minmax(130px, 2fr) auto minmax(0, 3fr)"},
-)
 assert_properties(
     "short landscape gallery navigation",
     selector_block(short_media, ".artwork-gallery-nav"),
@@ -214,9 +302,12 @@ for label, condition, status_bottom in (
     )
 PY
 
-grep -Fq 'role="tablist"' "$index"
-grep -Fq 'data-artwork-tab="details"' "$index"
-grep -Fq 'data-artwork-tab="comments"' "$index"
+! grep -Fq 'artwork-tabs' "$index"
+! grep -Fq 'data-artwork-tab' "$index"
+! grep -Fq 'role="tablist"' "$index"
+grep -Fq 'class="artwork-action-bar"' "$index"
+grep -Fq '观众评论 (<span id="artwork-comments-total">0</span>)' "$index"
+grep -Fq 'class="artwork-comment-composer"' "$index"
 
 grep -Fq 'id="museum-fullscreen-root"' "$index"
 grep -Fq 'id="museum-shell"' "$index"
@@ -317,7 +408,7 @@ grep -Fq '.view-panel' "$css"
 grep -Fq '@media (max-width: 820px)' "$css"
 grep -Fq '@media (max-width: 820px), (max-width: 900px) and (max-height: 420px) and (orientation: landscape)' "$css"
 grep -Fq '@media (max-width: 900px) and (max-height: 420px) and (orientation: landscape)' "$css"
-grep -Fq '.artwork-interaction-dock textarea {' "$css"
+grep -Fq '.artwork-comment-composer textarea {' "$css"
 grep -Fq 'min-height: 2.6rem;' "$css"
 grep -Fq 'grid-template-areas:' "$css"
 grep -Fq 'overflow-x: auto' "$css"
@@ -326,17 +417,19 @@ grep -Fq 'grid-template-columns: repeat(4, 38px)' "$css"
 grep -Fq 'max-height: calc(100vh - 10rem)' "$css"
 grep -Fq 'max-height: calc(100dvh - 10rem)' "$css"
 grep -Fq 'overflow-y: auto' "$css"
-grep -Fq 'grid-template-rows: minmax(0, 3fr) minmax(0, 2fr)' "$css"
-grep -Fq '.artwork-interaction-dock' "$css"
+grep -Fq 'grid-template-rows: minmax(0, 3fr) auto minmax(0, 2fr)' "$css"
+grep -Fq '.artwork-action-bar' "$css"
+grep -Fq '.artwork-comment-composer' "$css"
 grep -Fq '.artwork-comments-scroll' "$css"
 grep -Fq '.artwork-card.is-text-only .artwork-gallery,' "$css"
-grep -Fq '.artwork-card.is-text-only .artwork-tabs,' "$css"
+grep -Fq '.artwork-card.is-text-only .artwork-action-bar,' "$css"
 grep -Fq '.artwork-card.is-text-only .artwork-interactions {' "$css"
 grep -Fq 'display: none !important;' "$css"
 grep -Fq '.artwork-card.is-text-only .artwork-content { display: block; }' "$css"
-grep -Fq '.artwork-card.is-text-only .artwork-content { display: contents; }' "$css"
-grep -Fq '.artwork-card.is-text-only .artwork-details-panel { grid-row: 1 / 4; }' "$css"
 grep -Fq '@media (prefers-reduced-motion: reduce)' "$css"
+! grep -Fq '.artwork-tabs' "$css"
+! grep -Fq 'data-mobile-tab' "$css"
+! grep -Fq '.artwork-interaction-dock' "$css"
 ! grep -Fq 'grid-template-columns: minmax(0, 1fr) clamp(250px' "$css"
 ! grep -Fq '.catalog-panel' "$css"
 ! grep -Fq -- '--panel:' "$css"

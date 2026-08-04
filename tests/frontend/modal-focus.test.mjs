@@ -79,15 +79,15 @@ test("焦点循环排除隐藏区域中的后代控件", () => {
   assert.deepEqual(manager.focusableElements(modal), [visible]);
 });
 
-test("焦点循环排除 aria-hidden 标签面板中的控件", () => {
+test("焦点循环排除 inert 互动区域中的控件", () => {
   const manager = new ModalFocusManager({ documentObject, backgroundSelector: ".museum-shell" });
   const modal = node("modal");
   const visible = node("visible");
-  const hiddenTabControl = node("hidden-tab-control");
-  hiddenTabControl.closest = (selector) => selector.includes('[aria-hidden="true"]')
-    ? { attributes: new Map([["aria-hidden", "true"]]) } : null;
-  modal.querySelectorAll = () => [visible, hiddenTabControl];
-  modal.contains = (element) => element === visible || element === hiddenTabControl;
+  const hiddenInteraction = node("hidden-interaction");
+  hiddenInteraction.closest = (selector) => selector.includes("[inert]")
+    ? { inert: true } : null;
+  modal.querySelectorAll = () => [visible, hiddenInteraction];
+  modal.contains = (element) => element === visible || element === hiddenInteraction;
 
   manager.open(modal, { initialFocus: visible });
   documentObject.activeElement = visible;

@@ -72,7 +72,7 @@
   <section id="artwork-modal" class="modal" role="dialog" aria-modal="true"
     aria-labelledby="artwork-title" aria-hidden="true">
     <div class="modal-backdrop" data-artwork-close></div>
-    <div class="modal-card artwork-card" data-mobile-tab="details" tabindex="-1">
+    <div class="modal-card artwork-card" tabindex="-1">
       <header class="artwork-header">
         <p class="modal-kicker">COLLECTION</p>
         <h2 id="artwork-title">作品详情</h2>
@@ -111,31 +111,49 @@
               </div>
             </div>
           </section>
-          <div class="artwork-tabs" role="tablist" aria-label="作品信息切换">
-            <button type="button" role="tab" aria-selected="true" aria-controls="artwork-details-panel"
-              data-artwork-tab="details">作品说明</button>
-            <button type="button" role="tab" aria-selected="false" aria-controls="artwork-comments-panel"
-              data-artwork-tab="comments">评论互动</button>
+          <div class="artwork-action-bar" role="group" aria-label="作品互动">
+            <button id="artwork-like" type="button" aria-pressed="false" aria-label="点赞作品">
+              <svg class="artwork-action-icon" aria-hidden="true" viewBox="0 0 24 24">
+                <path d="M12 20.5 4.6 13.3a4.9 4.9 0 0 1 0-7 4.6 4.6 0 0 1 6.6 0L12 7l.8-.7a4.6 4.6 0 0 1 6.6 0 4.9 4.9 0 0 1 0 7Z"></path>
+              </svg>
+              <span id="artwork-like-count">0</span>
+            </button>
+            <button id="artwork-favorite" type="button" aria-pressed="false" aria-label="收藏作品">
+              <svg class="artwork-action-icon" aria-hidden="true" viewBox="0 0 24 24">
+                <path d="M6 3.5h12v17L12 17l-6 3.5Z"></path>
+              </svg>
+              <span id="artwork-favorite-label">收藏</span>
+            </button>
+            <button id="artwork-comment-jump" type="button" aria-label="查看观众评论">
+              <svg class="artwork-action-icon" aria-hidden="true" viewBox="0 0 24 24">
+                <path d="M4 4.5h16v12H9l-5 4Z"></path>
+              </svg>
+              <span id="artwork-comment-count">0</span>
+            </button>
+            <button id="artwork-share" type="button" aria-label="复制展品分享链接">
+              <svg class="artwork-action-icon" aria-hidden="true" viewBox="0 0 24 24">
+                <circle cx="18" cy="5" r="2.5"></circle>
+                <circle cx="6" cy="12" r="2.5"></circle>
+                <circle cx="18" cy="19" r="2.5"></circle>
+                <path d="m8.2 10.8 7.6-4.5M8.2 13.2l7.6 4.5"></path>
+              </svg>
+              <span>分享</span>
+            </button>
           </div>
-          <section id="artwork-details-panel" class="artwork-details-panel" role="tabpanel">
+          <section id="artwork-details-panel" class="artwork-details-panel">
             <div id="artwork-text" class="artwork-text"></div>
           </section>
         </div>
-        <aside id="artwork-comments-panel" class="artwork-interactions" role="tabpanel">
+        <aside id="artwork-comments-panel" class="artwork-interactions">
+          <h3 id="comments-title">观众评论 (<span id="artwork-comments-total">0</span>)</h3>
           <section class="artwork-comments-scroll" aria-labelledby="comments-title">
-            <h3 id="comments-title">观众评论</h3>
             <div id="comment-list" class="comment-list" aria-live="polite"></div>
             <button id="comments-more" class="text-button" type="button" hidden>加载更多</button>
           </section>
-          <div class="artwork-interaction-dock">
-            <button id="artwork-like" class="like-button" type="button">
-              <span id="artwork-like-symbol" aria-hidden="true">♡</span>
-              <span id="artwork-like-label">点赞</span>
-              <span id="artwork-like-count">0</span>
-            </button>
+          <div class="artwork-comment-composer">
             <form id="comment-form" class="comment-form">
               <label for="comment-input">写下你的评论</label>
-              <textarea id="comment-input" maxlength="1000" rows="3" placeholder="点赞或评论前需要登录"></textarea>
+              <textarea id="comment-input" maxlength="1000" rows="2" placeholder="评论前需要登录"></textarea>
               <button class="accent-button" type="submit">发布评论</button>
             </form>
           </div>

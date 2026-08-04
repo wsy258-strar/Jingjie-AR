@@ -338,7 +338,7 @@ button:disabled { cursor: not-allowed; opacity: .5; }
   letter-spacing: .22em;
 }
 
-.accent-button, .like-button, .text-button {
+.accent-button, .artwork-action-bar button, .text-button {
   border: 1px solid var(--line);
   border-radius: 3px;
   background: transparent;
@@ -412,6 +412,7 @@ button:disabled { cursor: not-allowed; opacity: .5; }
 }
 
 .artwork-card {
+  --artwork-composer-height: 7.5rem;
   width: min(1400px, calc(100vw - 2rem));
   height: min(900px, calc(100dvh - 2rem));
   max-height: calc(100dvh - 2rem);
@@ -438,7 +439,7 @@ button:disabled { cursor: not-allowed; opacity: .5; }
 .artwork-content {
   min-height: 0;
   display: grid;
-  grid-template-rows: minmax(0, 3fr) minmax(0, 2fr);
+  grid-template-rows: minmax(0, 3fr) auto minmax(0, 2fr);
   overflow: hidden;
 }
 
@@ -468,7 +469,7 @@ button:disabled { cursor: not-allowed; opacity: .5; }
 .artwork-interactions {
   min-height: 0;
   display: grid;
-  grid-template-rows: minmax(0, 1fr) auto;
+  grid-template-rows: auto minmax(0, 1fr) auto;
   overflow: hidden;
   padding-left: 1.5rem;
   border-left: 1px solid var(--line);
@@ -479,15 +480,23 @@ button:disabled { cursor: not-allowed; opacity: .5; }
   overflow-y: auto;
 }
 
-.artwork-details-panel { padding: 0 clamp(1rem, 2vw, 1.5rem) clamp(1rem, 2vw, 1.5rem); }
+.artwork-details-panel {
+  padding: 1rem clamp(1rem, 2vw, 1.5rem) clamp(1rem, 2vw, 1.5rem);
+}
 
-.artwork-comments-scroll { padding: 1.25rem 1.5rem 1rem 0; }
+.artwork-interactions > h3 {
+  margin: 0;
+  padding: 1.25rem 1.5rem .75rem 0;
+  font-size: 1rem;
+  font-weight: 500;
+}
 
-.artwork-interaction-dock {
-  display: grid;
-  gap: .8rem;
+.artwork-comments-scroll { padding: 0 1.5rem 1rem 0; }
+
+.artwork-comment-composer {
   padding: 1rem 1.5rem 1.25rem 0;
   border-top: 1px solid var(--line);
+  background: #211e18;
 }
 
 .artwork-gallery-nav, .artwork-gallery-tools button {
@@ -554,11 +563,47 @@ button:disabled { cursor: not-allowed; opacity: .5; }
   stroke-linejoin: round;
 }
 
-.artwork-tabs { display: none; }
+.artwork-action-bar {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  padding: .5rem clamp(1rem, 2vw, 1.5rem);
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
 
-/* 文字热点只保留说明，避免移动端标签规则重新显示评论互动。 */
+.artwork-action-bar button {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: .4rem;
+  padding: .55rem .4rem;
+  border: 0;
+  color: var(--accent-strong);
+  background: transparent;
+}
+
+.artwork-action-bar button + button { border-left: 1px solid var(--line); }
+
+.artwork-action-bar button[aria-pressed="true"] { background: rgba(212, 173, 101, .12); }
+
+.artwork-action-icon {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+#artwork-comment-jump { display: none; }
+
+/* 文字热点只保留说明，避免移动端流式规则重新显示评论互动。 */
 .artwork-card.is-text-only .artwork-gallery,
-.artwork-card.is-text-only .artwork-tabs,
+.artwork-card.is-text-only .artwork-action-bar,
+.artwork-card.is-text-only .artwork-comment-composer,
 .artwork-card.is-text-only .artwork-interactions {
   display: none !important;
 }
@@ -571,20 +616,6 @@ button:disabled { cursor: not-allowed; opacity: .5; }
   height: 100%;
   padding-top: clamp(1rem, 2vw, 1.5rem);
 }
-
-.artwork-interactions h3 { font-size: 1rem; font-weight: 500; }
-
-.like-button {
-  width: 100%;
-  display: flex;
-  justify-content: center;
-  gap: .5rem;
-  padding: .8rem;
-  border-color: var(--accent);
-  color: var(--accent-strong);
-}
-
-.like-button[aria-pressed="true"] { background: rgba(212, 173, 101, .12); }
 
 .comment-list {
   display: grid;
@@ -716,62 +747,86 @@ textarea { resize: vertical; }
 
   .scene-card img { height: 62px; }
 
+  .artwork-card { --artwork-composer-height: 4.6rem; }
+
   .artwork-layout {
+    display: block;
+    overflow-y: auto;
+    padding-bottom: calc(var(--artwork-composer-height) + env(safe-area-inset-bottom));
+    scroll-behavior: smooth;
+  }
+
+  .artwork-content {
+    display: block;
+    overflow: visible;
+  }
+
+  .artwork-gallery {
+    min-height: 15rem;
+    height: min(52vw, 26rem);
+  }
+
+  .artwork-action-bar {
     display: grid;
-    grid-template-columns: 1fr;
-    grid-template-rows: minmax(0, 3fr) auto minmax(0, 2fr);
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    padding: .4rem 1rem;
   }
 
-  .artwork-content { display: contents; }
+  .artwork-action-bar button { padding: .55rem .25rem; }
 
-  .artwork-gallery { grid-row: 1; }
+  #artwork-comment-jump { display: inline-flex; }
 
-  .artwork-tabs {
-    display: grid;
-    grid-row: 2;
-    grid-template-columns: 1fr 1fr;
-    border-top: 1px solid var(--line);
-    border-bottom: 1px solid var(--line);
+  .artwork-details-panel {
+    overflow: visible;
+    padding: 1rem;
   }
-
-  .artwork-tabs button {
-    padding: .75rem;
-    border: 0;
-    color: var(--muted);
-    background: transparent;
-    cursor: pointer;
-  }
-
-  .artwork-tabs button[aria-selected="true"] {
-    color: var(--accent-strong);
-    background: rgba(212, 173, 101, .1);
-  }
-
-  .artwork-details-panel, .artwork-interactions { grid-row: 3; }
-
-  .artwork-details-panel { padding-top: 1rem; }
 
   .artwork-interactions {
-    padding-left: 1rem;
+    display: block;
+    overflow: visible;
+    padding-left: 0;
     border-left: 0;
+    border-top: 1px solid var(--line);
   }
 
-  .artwork-comments-scroll { padding-left: 0; }
+  .artwork-interactions > h3 { padding: 1rem 1rem .65rem; }
 
-  .artwork-interaction-dock { padding-left: 0; }
+  .artwork-comments-scroll {
+    overflow: visible;
+    padding: 0 1rem 1rem;
+  }
 
-  .artwork-card[data-mobile-tab="details"] .artwork-interactions { display: none; }
+  .artwork-comment-composer {
+    position: absolute;
+    z-index: 3;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    padding: .5rem 1rem 0;
+    padding-bottom: env(safe-area-inset-bottom);
+    border-top: 1px solid var(--line);
+    background: rgba(33, 30, 24, .98);
+  }
 
-  .artwork-card[data-mobile-tab="comments"] .artwork-details-panel { display: none; }
-
-  .artwork-card[data-mobile-tab="comments"] .artwork-interactions {
+  .artwork-comment-composer .comment-form {
     display: grid;
-    height: auto;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: .5rem;
+    align-items: end;
   }
 
-  .artwork-card.is-text-only .artwork-content { display: contents; }
+  .artwork-comment-composer label { display: none; }
 
-  .artwork-card.is-text-only .artwork-details-panel { grid-row: 1 / 4; }
+  .artwork-comment-composer textarea {
+    min-height: 2.6rem;
+    max-height: 2.6rem;
+    padding: .55rem;
+    resize: none;
+  }
+
+  .artwork-comment-composer .accent-button { min-height: 2.6rem; }
+
+  .artwork-card.is-text-only .artwork-layout { padding-bottom: 0; }
 }
 
 @media (max-height: 420px) and (orientation: landscape) {
@@ -803,6 +858,7 @@ textarea { resize: vertical; }
   .modal { padding: .5rem; }
 
   .artwork-card {
+    --artwork-composer-height: 3.7rem;
     width: calc(100vw - 1rem);
     height: calc(100dvh - 1rem);
     max-height: calc(100dvh - 1rem);
@@ -814,9 +870,11 @@ textarea { resize: vertical; }
 
   .artwork-header h2 { font-size: 1.1rem; }
 
-  .artwork-layout { grid-template-rows: minmax(130px, 2fr) auto minmax(0, 3fr); }
-
-  .artwork-gallery { padding: .5rem; }
+  .artwork-gallery {
+    min-height: 130px;
+    height: 180px;
+    padding: .5rem;
+  }
 
   .artwork-gallery-nav {
     top: .45rem;
@@ -849,30 +907,27 @@ textarea { resize: vertical; }
 
   .artwork-image-status { left: .45rem; right: auto; bottom: .45rem; }
 
-  .artwork-tabs button { padding: .45rem; }
+  .artwork-action-bar { padding: .25rem 1rem; }
 
-  .artwork-comments-scroll { padding: .5rem 1rem .35rem 0; }
+  .artwork-action-bar button { padding: .35rem .2rem; }
 
-  .artwork-comments-scroll h3 { margin: 0 0 .35rem; }
+  .artwork-interactions > h3 { padding: .65rem 1rem .35rem; }
 
-  .artwork-interaction-dock {
-    gap: .35rem;
-    padding: .35rem 1rem .5rem 0;
-  }
+  .artwork-comments-scroll { padding: 0 1rem .5rem; }
 
-  .artwork-interaction-dock .like-button { padding: .42rem; }
+  .artwork-comment-composer { padding: .35rem 1rem 0; }
 
   .comment-form { gap: .25rem; }
 
   .comment-form label { display: none; }
 
-  .artwork-interaction-dock textarea {
+  .artwork-comment-composer textarea {
     min-height: 2.6rem;
     max-height: 2.6rem;
     padding: .35rem;
   }
 
-  .artwork-interaction-dock .accent-button { padding: .42rem .7rem; }
+  .artwork-comment-composer .accent-button { padding: .42rem .7rem; }
 }
 
 @media (max-width: 520px) {

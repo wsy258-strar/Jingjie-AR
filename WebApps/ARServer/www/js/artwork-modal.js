@@ -1,8 +1,8 @@
 // 作品弹窗只使用安全 DOM 属性写入后端内容，并协调登录后的一次性待操作重试。
 import { ApiError } from "./api-client.js";
+import { ArtworkFavorites } from "./artwork-favorites.js";
 import { ArtworkGallery } from "./artwork-gallery.js";
-
-const MOBILE_TAB_QUERY = "(max-width: 820px), (max-width: 900px) and (max-height: 420px) and (orientation: landscape)";
+import { buildArtworkShareUrl, copyArtworkShareLink } from "./artwork-share.js";
 
 function formatCount(value) {
   const count = Number(value);
@@ -23,12 +23,25 @@ export async function fetchArtworkDetail({ api, auth, artworkId, signal } = {}) 
 }
 
 export class ArtworkModal {
-  constructor({ api, auth, modalManager, notify, documentObject = document } = {}) {
+  constructor({
+    api, auth, modalManager, notify,
+    favorites,
+    copyShareLink,
+    locationObject = globalThis.location,
+    documentObject = document
+  } = {}) {
     this.api = api;
     this.auth = auth;
     this.modalManager = modalManager;
     this.notify = notify;
     this.document = documentObject;
+    this.favorites = favorites || new ArtworkFavorites();
+    this.locationObject = locationObject;
+    this.copyShareLink = copyShareLink || ((artworkId) => copyArtworkShareLink({
+      navigatorObject: this.document.defaultView?.navigator || globalThis.navigator,
+      documentObject: this.document,
+      url: buildArtworkShareUrl(this.locationObject, artworkId)
+    }));
     this.root = documentObject.getElementById("artwork-modal");
     this.card = this.root.querySelector(".modal-card");
     this.title = documentObject.getElementById("artwork-title");
@@ -49,16 +62,21 @@ export class ArtworkModal {
     this.text = documentObject.getElementById("artwork-text");
     this.detailsPanel = documentObject.getElementById("artwork-details-panel");
     this.interactions = documentObject.getElementById("artwork-comments-panel");
-    this.tabs = this.root.querySelector(".artwork-tabs");
-    this.tabButtons = Array.from(this.root.querySelectorAll("[data-artwork-tab]"));
-    this.mobileTabQuery = documentObject.defaultView?.matchMedia?.(MOBILE_TAB_QUERY) || null;
+    this.actionBar = this.root.querySelector(".artwork-action-bar");
     this.likeButton = documentObject.getElementById("artwork-like");
-    this.likeSymbol = documentObject.getElementById("artwork-like-symbol");
-    this.likeLabel = documentObject.getElementById("artwork-like-label");
     this.likeCount = documentObject.getElementById("artwork-like-count");
+    this.favoriteButton = documentObject.getElementById("artwork-favorite");
+    this.favoriteLabel = documentObject.getElementById("artwork-favorite-label");
+    this.commentJumpButton = documentObject.getElementById("artwork-comment-jump");
+    this.commentCount = documentObject.getElementById("artwork-comment-count");
+    this.shareButton = documentObject.getElementById("artwork-share");
+    this.commentsTitle = documentObject.getElementById("comments-title");
+    this.commentsTotal = documentObject.getElementById("artwork-comments-total");
     this.commentList = documentObject.getElementById("comment-list");
     this.commentsMore = documentObject.getElementById("comments-more");
     this.commentsScroller = this.root.querySelector(".artwork-comments-scroll");
+    this.commentsSection = this.commentsScroller;
+    this.composer = this.root.querySelector(".artwork-comment-composer");
     this.commentForm = documentObject.getElementById("comment-form");
     this.commentInput = documentObject.getElementById("comment-input");
     this.currentArtwork = null;
@@ -67,23 +85,20 @@ export class ArtworkModal {
     this.protectedActionPending = false;
     this.modalGeneration = 0;
     this.bindEvents();
-    this.mobileTabQuery?.addEventListener("change", () => {
-      this.setActiveTab(this.card.dataset.mobileTab);
-    });
   }
 
   bindEvents() {
     this.root.querySelectorAll("[data-artwork-close]").forEach((element) => {
       element.addEventListener("click", () => this.close());
     });
-    this.tabButtons.forEach((button) => {
-      button.addEventListener("click", () => this.setActiveTab(button.dataset.artworkTab));
-    });
     this.likeButton.addEventListener("click", () => {
       if (!this.currentArtwork) return;
       const context = this.artworkContext();
       this.runProtected(() => this.toggleLike(context));
     });
+    this.favoriteButton.addEventListener("click", () => this.toggleFavorite());
+    this.commentJumpButton.addEventListener("click", () => this.scrollToComments());
+    this.shareButton.addEventListener("click", () => this.shareCurrentArtwork());
     this.commentsMore.addEventListener("click", () => this.loadComments(false));
     this.commentForm.addEventListener("submit", (event) => {
       event.preventDefault();
@@ -111,12 +126,19 @@ export class ArtworkModal {
     this.text.textContent = "";
     this.galleryViewer.clear();
     this.commentList.textContent = "";
+    this.commentsMore.hidden = true;
+    this.updateLike(false, 0);
+    this.updateCommentCount(0);
+    this.updateFavorite(false);
     this.card.classList.remove("is-text-only");
     this.gallery.hidden = false;
-    this.tabs.hidden = false;
     this.galleryTools.hidden = false;
-    this.interactions.hidden = false;
-    this.setActiveTab("details");
+    this.setPanelAccessibility(this.detailsPanel, false);
+    this.setPanelAccessibility(this.actionBar, false);
+    this.setPanelAccessibility(this.interactions, false);
+    this.setPanelAccessibility(this.commentsTitle, false);
+    this.setPanelAccessibility(this.commentsScroller, false);
+    this.setPanelAccessibility(this.composer, false);
     this.loadController = new AbortController();
 
     try {
@@ -147,12 +169,19 @@ export class ArtworkModal {
     this.text.textContent = hotspot.text || "";
     this.galleryViewer.clear();
     this.commentList.textContent = "";
+    this.commentsMore.hidden = true;
+    this.updateLike(false, 0);
+    this.updateCommentCount(0);
+    this.updateFavorite(false);
     this.card.classList.add("is-text-only");
     this.gallery.hidden = true;
-    this.tabs.hidden = true;
     this.galleryTools.hidden = true;
-    this.interactions.hidden = true;
-    this.setActiveTab("details");
+    this.setPanelAccessibility(this.detailsPanel, false);
+    this.setPanelAccessibility(this.actionBar, true);
+    this.setPanelAccessibility(this.interactions, true);
+    this.setPanelAccessibility(this.commentsTitle, true);
+    this.setPanelAccessibility(this.commentsScroller, true);
+    this.setPanelAccessibility(this.composer, true);
   }
 
   renderDetail(detail) {
@@ -160,28 +189,13 @@ export class ArtworkModal {
     this.text.textContent = detail.text || "";
     this.galleryViewer.setImages(detail.images, detail.title || "未命名作品");
     this.updateLike(detail.liked, detail.likeCount);
-  }
-
-  setActiveTab(tab) {
-    const activeTab = tab === "comments" ? "comments" : "details";
-    this.card.dataset.mobileTab = activeTab;
-    this.tabButtons.forEach((button) => {
-      button.setAttribute("aria-selected", String(button.dataset.artworkTab === activeTab));
-    });
-    const isTextOnly = this.card.classList?.contains("is-text-only");
-    const useMobileTabs = Boolean(this.mobileTabQuery?.matches);
-    this.setPanelAccessibility(
-      this.detailsPanel,
-      !isTextOnly && useMobileTabs && activeTab !== "details"
-    );
-    this.setPanelAccessibility(
-      this.interactions,
-      Boolean(isTextOnly || (useMobileTabs && activeTab !== "comments"))
-    );
+    this.updateCommentCount(detail.commentCount);
+    this.updateFavorite(this.favorites.isFavorite(detail.artworkId));
   }
 
   setPanelAccessibility(panel, hidden) {
     if (!panel) return;
+    panel.hidden = hidden;
     panel.inert = hidden;
     panel.setAttribute("aria-hidden", String(hidden));
   }
@@ -189,12 +203,41 @@ export class ArtworkModal {
   updateLike(liked, count) {
     if (this.currentArtwork) {
       this.currentArtwork.liked = Boolean(liked);
-      this.currentArtwork.likeCount = Number(count) || 0;
+      this.currentArtwork.likeCount = Number(formatCount(count));
     }
     this.likeButton.setAttribute("aria-pressed", liked ? "true" : "false");
-    this.likeSymbol.textContent = liked ? "♥" : "♡";
-    this.likeLabel.textContent = liked ? "已点赞" : "点赞";
+    this.likeButton.setAttribute("aria-label", liked ? "取消点赞作品" : "点赞作品");
     this.likeCount.textContent = formatCount(count);
+  }
+
+  updateCommentCount(count) {
+    const value = formatCount(count);
+    if (this.currentArtwork) this.currentArtwork.commentCount = Number(value);
+    this.commentCount.textContent = value;
+    this.commentsTotal.textContent = value;
+  }
+
+  updateFavorite(checked) {
+    this.favoriteButton.setAttribute("aria-pressed", String(Boolean(checked)));
+    this.favoriteLabel.textContent = checked ? "已收藏" : "收藏";
+  }
+
+  toggleFavorite() {
+    if (!this.currentArtwork) return;
+    this.updateFavorite(this.favorites.toggle(this.currentArtwork.artworkId));
+  }
+
+  async shareCurrentArtwork() {
+    if (!this.currentArtwork) return;
+    let copied = false;
+    try {
+      copied = await this.copyShareLink(this.currentArtwork.artworkId);
+    } catch (_) {}
+    this.notify(copied ? "展品链接已复制" : "展品链接复制失败");
+  }
+
+  scrollToComments() {
+    this.commentsSection.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
   artworkContext() {
@@ -270,6 +313,8 @@ export class ArtworkModal {
       method: "POST", body: { content }, user: true
     });
     if (!this.isCurrent(context)) return;
+    const currentCount = Number(this.currentArtwork.commentCount) || 0;
+    this.updateCommentCount(currentCount + 1);
     if (this.commentInput.value.trim() === content) this.commentInput.value = "";
     await this.loadComments(true, context);
   }

@@ -13,9 +13,15 @@ await writeFile(join(target, "api-client.mjs"),
 let modalSource = await readFile(new URL("artwork-modal.js", source), "utf8");
 modalSource = modalSource.replace("./api-client.js", "./api-client.mjs");
 modalSource = modalSource.replace("./artwork-gallery.js", "./artwork-gallery.mjs");
+modalSource = modalSource.replace("./artwork-favorites.js", "./artwork-favorites.mjs");
+modalSource = modalSource.replace("./artwork-share.js", "./artwork-share.mjs");
 await writeFile(join(target, "artwork-modal.mjs"), modalSource);
 await writeFile(join(target, "artwork-gallery.mjs"),
   await readFile(new URL("artwork-gallery.js", source), "utf8"));
+await writeFile(join(target, "artwork-favorites.mjs"),
+  await readFile(new URL("artwork-favorites.js", source), "utf8"));
+await writeFile(join(target, "artwork-share.mjs"),
+  await readFile(new URL("artwork-share.js", source), "utf8"));
 const { ApiError } = await import(pathToFileURL(join(target, "api-client.mjs")).href);
 const { ArtworkModal, fetchArtworkDetail } = await import(
   pathToFileURL(join(target, "artwork-modal.mjs")).href
@@ -44,34 +50,35 @@ function element() {
     appendChild(child) { this.children.push(child); },
     replaceChildren(...children) { this.children = children; },
     focus() {},
+    scrollIntoView() {},
     querySelector() { return null; },
     setAttribute(name, value) { attributes[name] = String(value); }
   };
 }
 
-function tabButton(name) {
-  const button = element();
-  button.dataset.artworkTab = name;
-  return button;
-}
-
 function modalFixture() {
   const root = element();
   const card = element();
-  const tabsContainer = element();
-  const tabs = [tabButton("details"), tabButton("comments")];
+  const actionBar = element();
+  const commentsScroller = element();
+  const composer = element();
   root.querySelector = (selector) => {
     if (selector === ".modal-card") return card;
-    if (selector === ".artwork-tabs") return tabsContainer;
+    if (selector === ".artwork-action-bar") return actionBar;
+    if (selector === ".artwork-comments-scroll") return commentsScroller;
+    if (selector === ".artwork-comment-composer") return composer;
     return null;
   };
-  root.querySelectorAll = (selector) => selector === "[data-artwork-tab]" ? tabs : [];
+  root.querySelectorAll = () => [];
   const ids = [
     "artwork-title", "artwork-gallery", "artwork-gallery-stage", "artwork-image",
     "artwork-prev", "artwork-next", "artwork-image-count", "artwork-image-status",
     "artwork-zoom-in", "artwork-zoom-out", "artwork-reset", "artwork-text",
-    "artwork-details-panel", "artwork-comments-panel", "artwork-like", "artwork-like-symbol", "artwork-like-label",
-    "artwork-like-count", "comment-list", "comments-more", "comment-form", "comment-input"
+    "artwork-details-panel", "artwork-comments-panel", "artwork-like",
+    "artwork-like-count", "artwork-favorite", "artwork-favorite-label",
+    "artwork-comment-jump", "artwork-comment-count", "artwork-share",
+    "comments-title", "artwork-comments-total", "comment-list", "comments-more",
+    "comment-form", "comment-input"
   ];
   const elements = Object.fromEntries(ids.map((id) => [id, element()]));
   const galleryTools = element();
@@ -80,21 +87,21 @@ function modalFixture() {
   elements["artwork-gallery"].textContent = "预置画廊舞台";
   const documentObject = {
     getElementById(id) { return id === "artwork-modal" ? root : elements[id] || null; },
-    querySelectorAll(selector) { return selector === "[data-artwork-tab]" ? [tabButton("details"), tabButton("comments")] : []; },
     createElement: element
   };
-  return { root, card, tabsContainer, elements, galleryTools, documentObject };
+  return { root, card, actionBar, commentsScroller, composer, elements, galleryTools, documentObject };
 }
 
 function commentsModal({ request, nextBefore = 0, scrollTop = 0 } = {}) {
   const modal = Object.create(ArtworkModal.prototype);
   modal.api = { request };
-  modal.currentArtwork = { artworkId: "work-a", liked: false };
+  modal.currentArtwork = { artworkId: "work-a", liked: false, commentCount: 3 };
   modal.modalGeneration = 1;
   modal.nextBefore = nextBefore;
   modal.commentList = element();
   modal.commentsMore = element();
   modal.commentsScroller = { scrollTop };
+  modal.commentInput = element();
   modal.document = { createElement: element };
   modal.notify = (message) => assert.fail(message);
   return modal;
@@ -153,56 +160,105 @@ test("迟到的作品操作固定使用原作品 ID 且不污染新弹窗", asyn
   assert.equal(requests[0].path, "/api/artworks/work-a/likes");
 });
 
-test("渲染详情把图片交给画廊", () => {
+test("作品详情同步画廊、点赞、评论数与本地收藏状态", () => {
   const modal = Object.create(ArtworkModal.prototype);
   const calls = [];
+  modal.currentArtwork = { artworkId: "work-a" };
   modal.title = { textContent: "" };
   modal.text = { textContent: "" };
   modal.galleryViewer = {
     setImages(images, title) { calls.push({ images, title }); }
   };
-  modal.updateLike = () => {};
+  modal.likeButton = element();
+  modal.likeCount = element();
+  modal.commentCount = element();
+  modal.commentsTotal = element();
+  modal.favoriteButton = element();
+  modal.favoriteLabel = element();
+  modal.favorites = { isFavorite: (artworkId) => artworkId === "work-a" };
 
-  modal.renderDetail({ title: "《启航》", text: "说明", images: ["/a.jpg", "/b.jpg"] });
+  modal.renderDetail({
+    artworkId: "work-a", title: "《启航》", text: "说明",
+    liked: false, likeCount: 12, commentCount: 3, images: ["/a.jpg", "/b.jpg"]
+  });
 
   assert.deepEqual(calls, [{ images: ["/a.jpg", "/b.jpg"], title: "《启航》" }]);
+  assert.equal(modal.likeCount.textContent, "12");
+  assert.equal(modal.commentCount.textContent, "3");
+  assert.equal(modal.commentsTotal.textContent, "3");
+  assert.equal(modal.favoriteButton.attributes["aria-pressed"], "true");
+  assert.equal(modal.favoriteLabel.textContent, "已收藏");
 });
 
-test("移动标签更新卡片状态和 aria-selected", () => {
+test("收藏只写本地状态并同步按钮", () => {
   const modal = Object.create(ArtworkModal.prototype);
-  modal.card = element();
-  modal.tabButtons = [tabButton("details"), tabButton("comments")];
-  modal.detailsPanel = element();
-  modal.interactions = element();
-  modal.mobileTabQuery = { matches: true };
+  modal.currentArtwork = { artworkId: "work-a" };
+  modal.favoriteButton = element();
+  modal.favoriteLabel = element();
+  const toggled = [];
+  modal.favorites = {
+    toggle(artworkId) {
+      toggled.push(artworkId);
+      return true;
+    }
+  };
 
-  modal.setActiveTab("comments");
+  modal.toggleFavorite();
 
-  assert.equal(modal.card.dataset.mobileTab, "comments");
-  assert.equal(modal.tabButtons[1].attributes["aria-selected"], "true");
-  assert.equal(modal.detailsPanel.inert, true);
-  assert.equal(modal.detailsPanel.attributes["aria-hidden"], "true");
-  assert.equal(modal.interactions.inert, false);
-  assert.equal(modal.interactions.attributes["aria-hidden"], "false");
+  assert.deepEqual(toggled, ["work-a"]);
+  assert.equal(modal.favoriteButton.attributes["aria-pressed"], "true");
+  assert.equal(modal.favoriteLabel.textContent, "已收藏");
 });
 
-test("桌面端切换标签不会使任何面板永久不可访问", () => {
+test("分享当前作品复制深链接并通知", async () => {
   const modal = Object.create(ArtworkModal.prototype);
-  modal.card = element();
-  modal.tabButtons = [tabButton("details"), tabButton("comments")];
-  modal.detailsPanel = element();
-  modal.interactions = element();
-  modal.mobileTabQuery = { matches: false };
+  modal.currentArtwork = { artworkId: "work-a" };
+  modal.copyShareLink = async (artworkId) => artworkId === "work-a";
+  const notifications = [];
+  modal.notify = (message) => notifications.push(message);
 
-  modal.setActiveTab("comments");
+  await modal.shareCurrentArtwork();
 
-  assert.equal(modal.detailsPanel.inert, false);
-  assert.equal(modal.detailsPanel.attributes["aria-hidden"], "false");
-  assert.equal(modal.interactions.inert, false);
-  assert.equal(modal.interactions.attributes["aria-hidden"], "false");
+  assert.deepEqual(notifications, ["展品链接已复制"]);
 });
 
-test("打开作品保留预置画廊舞台并使用新的评论面板 ID", async () => {
+test("分享复制返回失败时通知用户", async () => {
+  const modal = Object.create(ArtworkModal.prototype);
+  modal.currentArtwork = { artworkId: "work-a" };
+  modal.copyShareLink = async () => false;
+  const notifications = [];
+  modal.notify = (message) => notifications.push(message);
+
+  await modal.shareCurrentArtwork();
+
+  assert.deepEqual(notifications, ["展品链接复制失败"]);
+});
+
+test("分享复制异常时降级为失败通知", async () => {
+  const modal = Object.create(ArtworkModal.prototype);
+  modal.currentArtwork = { artworkId: "work-a" };
+  modal.copyShareLink = async () => { throw new Error("clipboard unavailable"); };
+  const notifications = [];
+  modal.notify = (message) => notifications.push(message);
+
+  await modal.shareCurrentArtwork();
+
+  assert.deepEqual(notifications, ["展品链接复制失败"]);
+});
+
+test("评论跳转平滑定位到评论区", () => {
+  const modal = Object.create(ArtworkModal.prototype);
+  let options;
+  modal.commentsSection = {
+    scrollIntoView(value) { options = value; }
+  };
+
+  modal.scrollToComments();
+
+  assert.deepEqual(options, { behavior: "smooth", block: "start" });
+});
+
+test("打开作品保留预置画廊舞台并恢复完整互动区域", async () => {
   const fixture = modalFixture();
   const originalImage = globalThis.Image;
   globalThis.Image = class { set src(value) { this.source = value; } };
@@ -210,12 +266,16 @@ test("打开作品保留预置画廊舞台并使用新的评论面板 ID", async
     api: {
       async request(path) {
         if (path.includes("/comments")) return { comments: [], nextBefore: 0 };
-        return { artworkId: "work-1", title: "启航", text: "说明", images: ["/a.jpg", "/b.jpg"] };
+        return {
+          artworkId: "work-1", title: "启航", text: "说明",
+          likeCount: 2, commentCount: 4, images: ["/a.jpg", "/b.jpg"]
+        };
       }
     },
     auth: { token: () => "" },
     modalManager: { open() {}, close() {} },
     notify: (message) => assert.fail(message),
+    favorites: { isFavorite: () => false, toggle: () => false },
     documentObject: fixture.documentObject
   });
 
@@ -226,12 +286,15 @@ test("打开作品保留预置画廊舞台并使用新的评论面板 ID", async
     assert.deepEqual(modal.galleryViewer.images, ["/a.jpg", "/b.jpg"]);
     assert.equal(fixture.elements["artwork-image"].src, "/a.jpg");
     assert.equal(fixture.elements["artwork-comments-panel"].hidden, false);
+    assert.equal(fixture.actionBar.hidden, false);
+    assert.equal(fixture.composer.hidden, false);
+    assert.equal(fixture.elements["artwork-comment-count"].textContent, "4");
   } finally {
     globalThis.Image = originalImage;
   }
 });
 
-test("文字热点隐藏画廊、标签、工具栏与互动区", () => {
+test("文字热点隐藏画廊、互动栏、评论区与固定评论输入区", () => {
   const fixture = modalFixture();
   const modal = new ArtworkModal({
     api: {}, auth: { token: () => "" }, modalManager: { open() {}, close() {} },
@@ -242,12 +305,16 @@ test("文字热点隐藏画廊、标签、工具栏与互动区", () => {
 
   assert.equal(fixture.card.classList.contains("is-text-only"), true);
   assert.equal(fixture.elements["artwork-gallery"].hidden, true);
-  assert.equal(fixture.tabsContainer.hidden, true);
   assert.equal(fixture.galleryTools.hidden, true);
+  assert.equal(fixture.actionBar.hidden, true);
+  assert.equal(fixture.actionBar.inert, true);
   assert.equal(fixture.elements["artwork-comments-panel"].hidden, true);
   assert.equal(fixture.elements["artwork-comments-panel"].inert, true);
   assert.equal(fixture.elements["artwork-comments-panel"].attributes["aria-hidden"], "true");
-  assert.equal(fixture.card.dataset.mobileTab, "details");
+  assert.equal(fixture.elements["comments-title"].hidden, true);
+  assert.equal(fixture.commentsScroller.hidden, true);
+  assert.equal(fixture.composer.hidden, true);
+  assert.equal(fixture.composer.inert, true);
 });
 
 test("关闭弹窗会清空画廊", () => {
@@ -264,17 +331,22 @@ test("关闭弹窗会清空画廊", () => {
   assert.equal(clears, 1);
 });
 
-test("文字热点后打开作品恢复完整画廊与默认说明标签", async () => {
+test("文字热点后打开作品恢复画廊、互动栏、评论区与 composer", async () => {
   const fixture = modalFixture();
   const modal = new ArtworkModal({
     api: {
       async request(path) {
         if (path.includes("/comments")) return { comments: [], nextBefore: 0 };
-        return { artworkId: "work-1", title: "启航", text: "说明", images: ["/a.jpg"] };
+        return {
+          artworkId: "work-1", title: "启航", text: "说明",
+          likeCount: 1, commentCount: 2, images: ["/a.jpg"]
+        };
       }
     },
     auth: { token: () => "" }, modalManager: { open() {}, close() {} },
-    notify: (message) => assert.fail(message), documentObject: fixture.documentObject
+    notify: (message) => assert.fail(message),
+    favorites: { isFavorite: () => true, toggle: () => false },
+    documentObject: fixture.documentObject
   });
 
   modal.openText({ title: "策展说明", text: "这里是文字热点内容" });
@@ -282,14 +354,103 @@ test("文字热点后打开作品恢复完整画廊与默认说明标签", async
 
   assert.equal(fixture.card.classList.contains("is-text-only"), false);
   assert.equal(fixture.elements["artwork-gallery"].hidden, false);
-  assert.equal(fixture.tabsContainer.hidden, false);
   assert.equal(fixture.galleryTools.hidden, false);
+  assert.equal(fixture.actionBar.hidden, false);
+  assert.equal(fixture.actionBar.inert, false);
   assert.equal(fixture.elements["artwork-comments-panel"].hidden, false);
   assert.equal(fixture.elements["artwork-details-panel"].inert, false);
   assert.equal(fixture.elements["artwork-comments-panel"].inert, false);
   assert.equal(fixture.elements["artwork-comments-panel"].attributes["aria-hidden"], "false");
-  assert.equal(fixture.card.dataset.mobileTab, "details");
-  assert.equal(modal.tabButtons[0].attributes["aria-selected"], "true");
+  assert.equal(fixture.elements["comments-title"].hidden, false);
+  assert.equal(fixture.commentsScroller.hidden, false);
+  assert.equal(fixture.composer.hidden, false);
+  assert.equal(fixture.composer.inert, false);
+});
+
+test("作品请求完成前清零旧互动状态且隐藏旧分页入口", async () => {
+  const fixture = modalFixture();
+  let resolveDetail;
+  const detailPending = new Promise((resolve) => { resolveDetail = resolve; });
+  fixture.elements["artwork-like-count"].textContent = "99";
+  fixture.elements["artwork-comment-count"].textContent = "88";
+  fixture.elements["artwork-comments-total"].textContent = "88";
+  fixture.elements["artwork-favorite"].setAttribute("aria-pressed", "true");
+  fixture.elements["comments-more"].hidden = false;
+  const modal = new ArtworkModal({
+    api: {
+      async request(path) {
+        if (path.includes("/comments")) return { comments: [], nextBefore: 0 };
+        return detailPending;
+      }
+    },
+    auth: { token: () => "" }, modalManager: { open() {}, close() {} },
+    notify: (message) => assert.fail(message),
+    favorites: { isFavorite: () => false, toggle: () => false },
+    documentObject: fixture.documentObject
+  });
+
+  const opening = modal.open("work-1");
+
+  assert.equal(fixture.elements["artwork-like-count"].textContent, "0");
+  assert.equal(fixture.elements["artwork-comment-count"].textContent, "0");
+  assert.equal(fixture.elements["artwork-comments-total"].textContent, "0");
+  assert.equal(fixture.elements["artwork-favorite"].attributes["aria-pressed"], "false");
+  assert.equal(fixture.elements["comments-more"].hidden, true);
+
+  resolveDetail({
+    artworkId: "work-1", title: "启航", text: "说明",
+    likeCount: 5, commentCount: 6, images: []
+  });
+  await opening;
+});
+
+test("成功评论只增加一次后端详情评论数", async () => {
+  const requests = [];
+  const modal = commentsModal({
+    request: async (path, options) => {
+      requests.push({ path, options });
+      return path.includes("?limit=20") ? { comments: [], nextBefore: 0 } : {};
+    }
+  });
+  modal.commentInput.value = "很好";
+  modal.updateCommentCount = (count) => { modal.currentArtwork.commentCount = count; };
+
+  await modal.submitComment(modal.artworkContext(), "很好");
+
+  assert.equal(modal.currentArtwork.commentCount, 4);
+  assert.equal(modal.commentInput.value, "");
+  assert.equal(requests.filter(({ options }) => options?.method === "POST").length, 1);
+});
+
+test("评论发布失败不增加评论数也不清空输入", async () => {
+  const modal = commentsModal({ request: async () => { throw new Error("发布失败"); } });
+  modal.commentInput.value = "保留内容";
+  modal.updateCommentCount = (count) => { modal.currentArtwork.commentCount = count; };
+
+  await assert.rejects(
+    modal.submitComment(modal.artworkContext(), "保留内容"),
+    /发布失败/
+  );
+
+  assert.equal(modal.currentArtwork.commentCount, 3);
+  assert.equal(modal.commentInput.value, "保留内容");
+});
+
+test("迟到的评论发布成功不增加新作品评论数", async () => {
+  let resolvePost;
+  const postPending = new Promise((resolve) => { resolvePost = resolve; });
+  const modal = commentsModal({ request: async () => postPending });
+  const oldContext = modal.artworkContext();
+  modal.updateCommentCount = () => assert.fail("迟到发布不得更新新作品计数");
+  modal.loadComments = () => assert.fail("迟到发布不得刷新新作品评论");
+
+  const submitting = modal.submitComment(oldContext, "旧作品评论");
+  modal.currentArtwork = { artworkId: "work-b", liked: false, commentCount: 7 };
+  modal.modalGeneration = 2;
+  resolvePost({});
+  await submitting;
+
+  assert.equal(modal.currentArtwork.commentCount, 7);
 });
 
 test("重载第一页评论在成功渲染后才回到顶部", async () => {
