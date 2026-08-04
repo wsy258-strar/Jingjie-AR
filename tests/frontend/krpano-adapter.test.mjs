@@ -66,6 +66,7 @@ test("场景 XML 包含低清预览、高清立方体和视角，且不渲染 in
   assert.match(xml, /15949056_%s\.jpg/);
   assert.match(xml, /preview\.jpg\?x=1&amp;y=2/);
   assert.match(xml, /hlookat="-5\.5"/);
+  assert.match(xml, /fovtype="MFOV"/);
   assert.match(xml, /前往 &quot;第二展厅&quot;/);
   assert.match(xml, /type="image"/);
   assert.match(xml, /crop="0\|0\|128\|128"/);

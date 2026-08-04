@@ -115,7 +115,7 @@ export function buildSceneXml(scene, viewOverride = null, viewMode = VIEW_MODES.
     '<preview url="', xmlEscape(scene.previewUrl), '" />',
     '<image><cube url="', xmlEscape(scene.cubeUrl), '" /></image>',
     '<view hlookat="', view.hlookat, '" vlookat="', view.vlookat,
-    '" fov="', view.fov, '" stereographic="', view.stereographic,
+    '" fov="', view.fov, '" fovtype="MFOV" stereographic="', view.stereographic,
     '" fisheye="', view.fisheye, '" />',
     hotspotXml,
     '</krpano>'

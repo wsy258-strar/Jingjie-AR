@@ -118,10 +118,13 @@ test("放大时拖动图片，原始比例时横向滑动换图", () => {
 test("当前图片失败时保留导航并显示中文错误", () => {
   const gallery = createGallery();
   gallery.setImages(["/broken.jpg", "/ok.jpg"], "作品");
+  assert.equal(gallery.status.hidden, true);
   gallery.image.onerror();
   assert.equal(gallery.status.textContent, "图片暂时无法加载");
+  assert.equal(gallery.status.hidden, false);
   assert.equal(gallery.next(), true);
   assert.equal(gallery.status.textContent, "");
+  assert.equal(gallery.status.hidden, true);
 });
 
 test("舞台只为图片拖动捕获指针，并在取消时释放对应捕获", () => {

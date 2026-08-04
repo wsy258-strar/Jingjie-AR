@@ -99,11 +99,16 @@ export class ArtworkGallery {
       this.image.src = source;
       this.image.alt = this.title || "作品图片";
       this.image.onerror = () => {
-        if (this.images[this.currentIndex] === source && this.status)
+        if (this.images[this.currentIndex] === source && this.status) {
           this.status.textContent = "图片暂时无法加载";
+          this.status.hidden = false;
+        }
       };
     }
-    if (this.status) this.status.textContent = "";
+    if (this.status) {
+      this.status.textContent = "";
+      this.status.hidden = true;
+    }
     if (this.counter) {
       this.counter.textContent = multiple ? `${this.currentIndex + 1} / ${count}` : "";
       this.counter.hidden = !multiple;
