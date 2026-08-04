@@ -150,6 +150,14 @@ void testPrepareSupportsSingleRangesAndRejectsInvalidRanges()
     CHECK(invalidResponse.statusCode() == HttpResponse::k416RangeNotSatisfiable);
     CHECK(invalidResponse.header("Content-Range") == "bytes */5");
 
+    HttpRequest rangedConditional = request(HttpRequest::kGet, "/index.html");
+    rangedConditional.addHeader("Range", "bytes=0-1");
+    rangedConditional.addHeader("If-None-Match", partial.header("ETag"));
+    HttpResponse notModifiedRange(false);
+    CHECK(handler.handle(rangedConditional, &notModifiedRange));
+    CHECK(notModifiedRange.statusCode() == HttpResponse::k304NotModified);
+    CHECK(notModifiedRange.body().empty());
+
     HttpRequest conditional = request(HttpRequest::kGet, "/index.html");
     conditional.addHeader("If-Modified-Since", "Wed, 31 Dec 2999 23:59:59 GMT");
     CHECK(handler.prepare(conditional, &plan));

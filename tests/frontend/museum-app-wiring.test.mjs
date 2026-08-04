@@ -669,6 +669,30 @@ test("目录加载完成前禁用的音乐按钮立即呈现无音乐状态", as
   }
 });
 
+test("切换到使用同一背景音乐的场景时保留播放进度", async () => {
+  const harness = await createHarness();
+  try {
+    const audio = harness.document.getElementById("scene-audio");
+    const button = harness.document.getElementById("music-toggle");
+    harness.app.configureMusic({
+      url: "/assets/music/exhibition.mp3", volume: 0.05, loop: true, autoplay: false
+    });
+    audio.currentTime = 37;
+    await audio.play();
+    harness.app.configureMusic({
+      url: "/assets/music/exhibition.mp3", volume: 0.05, loop: true, autoplay: true
+    });
+
+    assert.equal(audio.src, "/assets/music/exhibition.mp3");
+    assert.equal(audio.currentTime, 37);
+    assert.equal(audio.paused, false);
+    assert.equal(button.disabled, false);
+    assert.equal(button.title, "暂停讲解");
+  } finally {
+    await harness.cleanup();
+  }
+});
+
 test("museum-app 按媒体查询结果显式注入 reducedMotion", async () => {
   const harness = await createHarness({ reducedMotion: true });
   try {

@@ -115,6 +115,14 @@ bool StaticFileHandler::prepareInRoot(const std::string& root, const HttpRequest
     plan->fileSize = static_cast<size_t>(st.st_size);
     plan->responseSize = plan->fileSize;
     plan->isFile = true;
+    time_t ifModifiedSince = 0;
+    const std::string& ifModifiedSinceHeader = request.getHeader("If-Modified-Since");
+    if (request.getHeader("If-None-Match") == plan->etag ||
+        (parseHttpDate(ifModifiedSinceHeader, &ifModifiedSince) && st.st_mtime <= ifModifiedSince))
+    {
+        plan->status = HttpResponse::k304NotModified;
+        return true;
+    }
     const std::string& range = request.getHeader("Range");
     if (!range.empty())
     {
@@ -127,11 +135,6 @@ bool StaticFileHandler::prepareInRoot(const std::string& root, const HttpRequest
         plan->partial = true;
         return true;
     }
-    time_t ifModifiedSince = 0;
-    const std::string& ifModifiedSinceHeader = request.getHeader("If-Modified-Since");
-    if (request.getHeader("If-None-Match") == plan->etag ||
-        (parseHttpDate(ifModifiedSinceHeader, &ifModifiedSince) && st.st_mtime <= ifModifiedSince))
-        plan->status = HttpResponse::k304NotModified;
     return true;
 }
 

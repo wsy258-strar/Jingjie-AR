@@ -108,6 +108,7 @@ export class MuseumApp {
     this.sceneController = null;
     this.artworkModal = injectedArtworkModal;
     this.locationObject = locationObject;
+    this.musicUrl = "";
     const reducedMotion = typeof window.matchMedia === "function" &&
       window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     this.adapter = new KrpanoAdapter({
@@ -231,12 +232,21 @@ export class MuseumApp {
   configureMusic(music = {}) {
     const audio = element("scene-audio");
     const button = element("music-toggle");
+    const musicUrl = typeof music.url === "string" ? music.url : "";
+    if (musicUrl && musicUrl === this.musicUrl && audio.src) {
+      audio.volume = Math.max(0, Math.min(1, Number(music.volume) || 1));
+      audio.loop = Boolean(music.loop);
+      button.disabled = false;
+      setMusicButtonState(audio.paused ? "paused" : "playing");
+      return;
+    }
     audio.pause();
     audio.removeAttribute("src");
     button.disabled = true;
     setMusicButtonState("unavailable");
-    if (!music.url) return;
-    audio.src = music.url;
+    this.musicUrl = musicUrl;
+    if (!musicUrl) return;
+    audio.src = musicUrl;
     audio.volume = Math.max(0, Math.min(1, Number(music.volume) || 1));
     audio.loop = Boolean(music.loop);
     button.disabled = false;
