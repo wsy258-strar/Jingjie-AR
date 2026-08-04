@@ -86,15 +86,28 @@ function setMusicButtonState(state) {
   button.title = label;
 }
 
+export function artworkIdFromLocation(locationObject) {
+  try {
+    const href = locationObject?.href;
+    if (typeof href !== "string") return null;
+    const value = new URL(href).searchParams.get("artwork");
+    return value && value.trim() ? value : null;
+  } catch (_) {
+    return null;
+  }
+}
+
 const uiState = new MuseumUiState({ onChange: renderUiState });
 setMusicButtonState("unavailable");
 
-class MuseumApp {
-  constructor() {
+export class MuseumApp {
+  constructor({ artworkModal: injectedArtworkModal = artworkModal, locationObject = window.location } = {}) {
     this.catalog = null;
     this.currentScene = null;
     this.sceneGeneration = 0;
     this.sceneController = null;
+    this.artworkModal = injectedArtworkModal;
+    this.locationObject = locationObject;
     const reducedMotion = typeof window.matchMedia === "function" &&
       window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     this.adapter = new KrpanoAdapter({
@@ -117,7 +130,8 @@ class MuseumApp {
       const catalog = await api.request("/api/scenes");
       this.catalog = catalog;
       this.renderExhibition(catalog);
-      await this.switchScene(catalog.defaultSceneId);
+      const defaultSceneLoaded = await this.switchScene(catalog.defaultSceneId);
+      if (defaultSceneLoaded) this.openSharedArtwork();
       visitor.startHeartbeat();
       lifecycle.startCounterPolling();
     } catch (error) {
@@ -167,19 +181,29 @@ class MuseumApp {
       const scene = await api.request(`/api/scenes/${encodeURIComponent(sceneId)}`, {
         signal: controller.signal
       });
-      if (generation !== this.sceneGeneration) return;
+      if (generation !== this.sceneGeneration) return false;
       const loaded = await this.adapter.loadScene(scene, generation);
-      if (!loaded || generation !== this.sceneGeneration) return;
+      if (!loaded || generation !== this.sceneGeneration) return false;
       this.currentScene = scene;
       this.markCurrentScene(scene.sceneId);
       this.configureMusic(scene.music);
       element("scene-loading").hidden = true;
+      return true;
     } catch (error) {
-      if (error && error.name === "AbortError") return;
-      if (generation !== this.sceneGeneration) return;
+      if (error && error.name === "AbortError") return false;
+      if (generation !== this.sceneGeneration) return false;
       element("scene-loading").hidden = true;
       notify(error.message || "场景加载失败，已保留当前画面");
+      return false;
     }
+  }
+
+  openSharedArtwork() {
+    const sharedArtworkId = artworkIdFromLocation(this.locationObject);
+    if (!sharedArtworkId) return;
+    try {
+      Promise.resolve(this.artworkModal.open(sharedArtworkId)).catch(() => {});
+    } catch (_) {}
   }
 
   markCurrentScene(sceneId) {
@@ -196,9 +220,9 @@ class MuseumApp {
     if (hotspot.type === "scene" && hotspot.targetSceneId) {
       this.switchScene(hotspot.targetSceneId);
     } else if (hotspot.type === "artwork" && hotspot.artworkId) {
-      artworkModal.open(hotspot.artworkId);
+      this.artworkModal.open(hotspot.artworkId);
     } else if (hotspot.type === "text") {
-      artworkModal.openText(hotspot);
+      this.artworkModal.openText(hotspot);
     } else {
       notify("该展项暂不支持打开");
     }

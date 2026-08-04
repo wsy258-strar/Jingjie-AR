@@ -106,11 +106,15 @@ request 200 "$tmp/heartbeat-a.json" -X POST "$base_url/api/presence/heartbeat" \
   -H "X-Visitor-Token: $visitor_a"
 request 200 "$tmp/presence-after-switch.json" "$base_url/api/presence"
 test "$(json_value "$tmp/presence-after-switch.json" 'document["data"]["onlineCount"]')" -eq 2
-printf 'PASS 4/8: A 切换场景后展馆在线人数仍为 2\n'
+printf 'PASS 4/9: A 切换场景后展馆在线人数仍为 2\n'
+
+request 200 "$tmp/shared-link.html" --get --data-urlencode "artwork=$artwork_id" "$base_url/"
+grep -Fq 'src="/js/museum-app.js"' "$tmp/shared-link.html"
+printf 'PASS 5/9: 带作品参数的分享链接可加载展馆页面\n'
 
 request 401 "$tmp/guest-like.json" -X POST "$base_url/api/artworks/$artwork_id/likes"
 test "$(json_value "$tmp/guest-like.json" 'document["success"]')" = false
-printf 'PASS 5/8: 未登录作品写接口返回 401\n'
+printf 'PASS 6/9: 未登录作品写接口返回 401\n'
 
 username="museum-e2e-$suffix"
 password="museum-e2e-password-$suffix"
@@ -127,7 +131,7 @@ assert_success "$tmp/like.json"
 assert_success "$tmp/comment.json"
 test "$(json_value "$tmp/like.json" 'document["data"]["liked"]')" = true
 test "$(json_value "$tmp/comment.json" 'document["data"]["commentId"]')" -gt 0
-printf 'PASS 6/8: 登录后点赞和评论成功\n'
+printf 'PASS 7/9: 登录后点赞和评论成功\n'
 
 request 200 "$tmp/shared-scene-first.json" "$base_url/api/scenes/$first_scene"
 request 200 "$tmp/shared-scene-second.json" "$base_url/api/scenes/$second_scene"
@@ -159,12 +163,12 @@ request 200 "$tmp/comments-second.json" "$base_url/api/artworks/$second_hotspot_
 cmp "$tmp/detail-first.json" "$tmp/detail-second.json"
 cmp "$tmp/comments-first.json" "$tmp/comments-second.json"
 grep -Fq "端到端验收-$suffix" "$tmp/comments-first.json"
-printf 'PASS 7/8: 两个场景热点读取到相同作品互动数据\n'
+printf 'PASS 8/9: 两个场景热点读取到相同作品互动数据\n'
 
 request 200 "$tmp/exit-a.json" -X POST "$base_url/api/presence/exit" \
   -H "X-Visitor-Token: $visitor_a"
 request 200 "$tmp/presence-one.json" "$base_url/api/presence"
 test "$(json_value "$tmp/presence-one.json" 'document["data"]["onlineCount"]')" -eq 1
-printf 'PASS 8/8: A 退出后展馆在线人数为 1\n'
+printf 'PASS 9/9: A 退出后展馆在线人数为 1\n'
 
-printf 'PASS: 展馆全链路 8 步验收完成\n'
+printf 'PASS: 展馆全链路 9 步验收完成\n'

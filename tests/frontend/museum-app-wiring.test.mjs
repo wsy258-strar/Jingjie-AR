@@ -289,7 +289,7 @@ class MuseumUiStateStub {
   }
 }
 
-async function createHarness({ reducedMotion = false } = {}) {
+async function createHarness({ reducedMotion = false, locationHref = "https://example.test/" } = {}) {
   const directory = await mkdtemp(join(tmpdir(), "jingjie-ar-museum-wiring-"));
   const sourcePath = new URL("../../WebApps/ARServer/www/js/museum-app.js", import.meta.url);
   let source = await readFile(sourcePath, "utf8");
@@ -308,7 +308,13 @@ async function createHarness({ reducedMotion = false } = {}) {
     ApiClient, ApiError, AuthSession, VisitorSession, KrpanoAdapter, ArtworkModal,
     MuseumLifecycle, ModalFocusManager, MuseumUiState
   } = globalThis.__museumAppTestDeps;\n${source}`;
-  source += "\nglobalThis.__museumAppTestInstance = app;\n";
+  source += `
+globalThis.__museumAppTestInstance = app;
+globalThis.__museumAppTestClass = MuseumApp;
+globalThis.__museumArtworkIdFromLocation =
+  typeof artworkIdFromLocation === "function" ? artworkIdFromLocation : undefined;
+globalThis.__museumVisitorSession = visitor;
+`;
   const modulePath = join(directory, "museum-app.mjs");
   await writeFile(modulePath, source);
   const modalFocusPath = join(directory, "modal-focus.mjs");
@@ -326,13 +332,24 @@ async function createHarness({ reducedMotion = false } = {}) {
     window.matchMediaQueries.push(query);
     return { matches: reducedMotion };
   };
+  window.location = { href: locationHref };
 
+  let resolveCatalog;
   let rejectCatalog;
-  const catalogPromise = new Promise((_, reject) => { rejectCatalog = reject; });
+  const catalogPromise = new Promise((resolve, reject) => {
+    resolveCatalog = resolve;
+    rejectCatalog = reject;
+  });
+  const defaultCatalog = {
+    title: "测试展馆",
+    defaultSceneId: "scene-a",
+    scenes: []
+  };
   class ApiError extends Error {}
   class ApiClient {
     async request(path) {
       if (path === "/api/scenes") return catalogPromise;
+      if (path === "/api/scenes/scene-a") return { sceneId: "scene-a", music: {} };
       if (path === "/api/statistics/views") {
         return { statisticsAvailable: false, totalViews: null };
       }
@@ -346,7 +363,10 @@ async function createHarness({ reducedMotion = false } = {}) {
     async authenticate() { return { username: "tester", token: "token", isNew: false }; }
   }
   class VisitorSession {
-    startHeartbeat() {}
+    constructor() {
+      this.heartbeatCalls = 0;
+    }
+    startHeartbeat() { this.heartbeatCalls += 1; }
   }
   class MuseumLifecycle {
     async bootstrapVisitorOnce() { return null; }
@@ -383,7 +403,10 @@ async function createHarness({ reducedMotion = false } = {}) {
     window: globalThis.window,
     deps: globalThis.__museumAppTestDeps,
     adapter: globalThis.__museumAppAdapter,
-    app: globalThis.__museumAppTestInstance
+    app: globalThis.__museumAppTestInstance,
+    appClass: globalThis.__museumAppTestClass,
+    artworkIdFromLocation: globalThis.__museumArtworkIdFromLocation,
+    visitor: globalThis.__museumVisitorSession
   };
   globalThis.document = document;
   globalThis.window = window;
@@ -395,12 +418,19 @@ async function createHarness({ reducedMotion = false } = {}) {
   await import(`${pathToFileURL(modulePath).href}?case=${Date.now()}-${Math.random()}`);
   const adapter = globalThis.__museumAppAdapter;
   const app = globalThis.__museumAppTestInstance;
+  const MuseumApp = globalThis.__museumAppTestClass;
+  const artworkIdFromLocation = globalThis.__museumArtworkIdFromLocation;
+  const visitor = globalThis.__museumVisitorSession;
 
   return {
     app,
+    MuseumApp,
+    artworkIdFromLocation,
+    visitor,
     adapter,
     document,
     window,
+    resolveCatalog(catalog = defaultCatalog) { resolveCatalog(catalog); },
     failCatalog(error = new Error("展馆目录加载失败")) { rejectCatalog(error); },
     async cleanup() {
       globalThis.document = previous.document;
@@ -408,6 +438,9 @@ async function createHarness({ reducedMotion = false } = {}) {
       globalThis.__museumAppTestDeps = previous.deps;
       globalThis.__museumAppAdapter = previous.adapter;
       globalThis.__museumAppTestInstance = previous.app;
+      globalThis.__museumAppTestClass = previous.appClass;
+      globalThis.__museumArtworkIdFromLocation = previous.artworkIdFromLocation;
+      globalThis.__museumVisitorSession = previous.visitor;
       await rm(directory, { recursive: true, force: true });
     }
   };
@@ -674,6 +707,72 @@ test("手动播放的其他拒绝仍显示中文通知", async () => {
 
     await harness.document.getElementById("music-toggle").dispatch("click");
     assert.match(harness.document.getElementById("notice").textContent, /浏览器未允许播放音频/);
+  } finally {
+    await harness.cleanup();
+  }
+});
+
+test("artworkIdFromLocation 对缺失、空白及畸形地址安全返回 null", async () => {
+  const harness = await createHarness();
+  try {
+    assert.equal(typeof harness.artworkIdFromLocation, "function");
+    assert.equal(harness.artworkIdFromLocation(), null);
+    assert.equal(harness.artworkIdFromLocation({ href: "https://example.test/" }), null);
+    assert.equal(harness.artworkIdFromLocation({ href: "https://example.test/?artwork=   " }), null);
+    assert.equal(harness.artworkIdFromLocation({ href: "not a valid URL" }), null);
+    assert.equal(
+      harness.artworkIdFromLocation({ href: "https://example.test/?artwork=work-a" }),
+      "work-a"
+    );
+  } finally {
+    await harness.cleanup();
+  }
+});
+
+test("启动完成后只对非空 artwork 参数打开一次作品", async () => {
+  const harness = await createHarness();
+  try {
+    const opened = [];
+    const artworkModal = { open(artworkId) { opened.push(artworkId); } };
+    const app = new harness.MuseumApp({
+      artworkModal,
+      locationObject: { href: "https://example.test/?artwork=work-a" }
+    });
+    harness.resolveCatalog();
+
+    await app.bootstrap();
+
+    assert.deepEqual(opened, ["work-a"]);
+  } finally {
+    await harness.cleanup();
+  }
+});
+
+test("作品弹窗拒绝不阻断默认场景、访客会话和心跳", async () => {
+  const harness = await createHarness();
+  try {
+    const opened = [];
+    const artworkModal = {
+      open(artworkId) {
+        opened.push(artworkId);
+        return Promise.reject(new Error("作品详情暂不可用"));
+      }
+    };
+    const app = new harness.MuseumApp({
+      artworkModal,
+      locationObject: { href: "https://example.test/?artwork=work-a" }
+    });
+    harness.resolveCatalog();
+    await new Promise((resolve) => setImmediate(resolve));
+    const heartbeatBefore = harness.visitor.heartbeatCalls;
+
+    await app.bootstrap();
+    await new Promise((resolve) => setImmediate(resolve));
+
+    assert.deepEqual(opened, ["work-a"]);
+    assert.equal(app.currentScene.sceneId, "scene-a");
+    assert.equal(harness.document.getElementById("scene-loading").hidden, true);
+    assert.equal(harness.visitor.heartbeatCalls, heartbeatBefore + 1);
   } finally {
     await harness.cleanup();
   }
