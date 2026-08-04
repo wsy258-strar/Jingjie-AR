@@ -126,6 +126,7 @@ export class ArtworkModal {
     this.text.textContent = "";
     this.galleryViewer.clear();
     this.commentList.textContent = "";
+    this.commentInput.value = "";
     this.commentsMore.hidden = true;
     this.updateLike(false, 0);
     this.updateCommentCount(0);
@@ -169,6 +170,7 @@ export class ArtworkModal {
     this.text.textContent = hotspot.text || "";
     this.galleryViewer.clear();
     this.commentList.textContent = "";
+    this.commentInput.value = "";
     this.commentsMore.hidden = true;
     this.updateLike(false, 0);
     this.updateCommentCount(0);
@@ -355,6 +357,7 @@ export class ArtworkModal {
     ++this.modalGeneration;
     this.modalManager.close(this.root);
     this.currentArtwork = null;
+    this.commentInput.value = "";
     this.galleryViewer.clear();
   }
 }

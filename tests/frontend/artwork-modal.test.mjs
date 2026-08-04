@@ -317,18 +317,20 @@ test("文字热点隐藏画廊、互动栏、评论区与固定评论输入区",
   assert.equal(fixture.composer.inert, true);
 });
 
-test("关闭弹窗会清空画廊", () => {
+test("关闭弹窗会清空画廊与评论草稿", () => {
   const modal = Object.create(ArtworkModal.prototype);
   let clears = 0;
   modal.cancelLoad = () => {};
   modal.modalGeneration = 0;
   modal.modalManager = { close() {} };
   modal.root = {};
+  modal.commentInput = { value: "未提交草稿" };
   modal.galleryViewer = { clear() { clears += 1; } };
 
   modal.close();
 
   assert.equal(clears, 1);
+  assert.equal(modal.commentInput.value, "");
 });
 
 test("文字热点后打开作品恢复画廊、互动栏、评论区与 composer", async () => {
@@ -365,6 +367,42 @@ test("文字热点后打开作品恢复画廊、互动栏、评论区与 compose
   assert.equal(fixture.commentsScroller.hidden, false);
   assert.equal(fixture.composer.hidden, false);
   assert.equal(fixture.composer.inert, false);
+});
+
+test("切换作品、进入文字热点和关闭弹窗都会清空未提交评论", async () => {
+  const fixture = modalFixture();
+  const modal = new ArtworkModal({
+    api: {
+      async request(path) {
+        if (path.includes("/comments")) return { comments: [], nextBefore: 0 };
+        const artworkId = path.endsWith("work-b") ? "work-b" : "work-a";
+        return {
+          artworkId, title: artworkId, text: "说明",
+          likeCount: 0, commentCount: 0, images: []
+        };
+      }
+    },
+    auth: { token: () => "" }, modalManager: { open() {}, close() {} },
+    notify: (message) => assert.fail(message),
+    favorites: { isFavorite: () => false, toggle: () => false },
+    documentObject: fixture.documentObject
+  });
+
+  await modal.open("work-a");
+  fixture.elements["comment-input"].value = "作品 A 草稿";
+  await modal.open("work-b");
+  assert.equal(fixture.elements["comment-input"].value, "");
+
+  fixture.elements["comment-input"].value = "作品 B 草稿";
+  modal.openText({ title: "策展说明", text: "内容" });
+  assert.equal(fixture.elements["comment-input"].value, "");
+
+  await modal.open("work-a");
+  fixture.elements["comment-input"].value = "关闭前草稿";
+  modal.close();
+  assert.equal(fixture.elements["comment-input"].value, "");
+  await modal.open("work-b");
+  assert.equal(fixture.elements["comment-input"].value, "");
 });
 
 test("作品请求完成前清零旧互动状态且隐藏旧分页入口", async () => {
