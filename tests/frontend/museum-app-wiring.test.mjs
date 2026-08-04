@@ -693,6 +693,28 @@ test("切换到使用同一背景音乐的场景时保留播放进度", async ()
   }
 });
 
+test("自动播放被拦截后在首次页面交互时续播背景音乐", async () => {
+  const harness = await createHarness();
+  try {
+    const audio = harness.document.getElementById("scene-audio");
+    const button = harness.document.getElementById("music-toggle");
+    audio.playError = new Error("NotAllowedError");
+    harness.app.configureMusic({
+      url: "/assets/music/exhibition.mp3", volume: 0.05, loop: true, autoplay: true
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(audio.paused, true);
+
+    audio.playError = null;
+    await harness.document.dispatch("pointerdown");
+
+    assert.equal(audio.paused, false);
+    assert.equal(button.title, "暂停讲解");
+  } finally {
+    await harness.cleanup();
+  }
+});
+
 test("museum-app 按媒体查询结果显式注入 reducedMotion", async () => {
   const harness = await createHarness({ reducedMotion: true });
   try {

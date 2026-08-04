@@ -108,7 +108,9 @@ export class MuseumApp {
     this.sceneController = null;
     this.artworkModal = injectedArtworkModal;
     this.locationObject = locationObject;
+    this.document = document;
     this.musicUrl = "";
+    this.musicAutoplayRetry = null;
     const reducedMotion = typeof window.matchMedia === "function" &&
       window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     this.adapter = new KrpanoAdapter({
@@ -240,6 +242,7 @@ export class MuseumApp {
       setMusicButtonState(audio.paused ? "paused" : "playing");
       return;
     }
+    this.clearMusicAutoplayRetry();
     audio.pause();
     audio.removeAttribute("src");
     button.disabled = true;
@@ -251,9 +254,35 @@ export class MuseumApp {
     audio.loop = Boolean(music.loop);
     button.disabled = false;
     setMusicButtonState("paused");
-    if (music.autoplay) {
-      audio.play().then(() => { setMusicButtonState("playing"); }).catch(() => {});
-    }
+    if (music.autoplay) this.playMusic(audio, true);
+  }
+
+  clearMusicAutoplayRetry() {
+    if (!this.musicAutoplayRetry) return;
+    this.document.removeEventListener?.("pointerdown", this.musicAutoplayRetry, true);
+    this.document.removeEventListener?.("keydown", this.musicAutoplayRetry, true);
+    this.musicAutoplayRetry = null;
+  }
+
+  playMusic(audio, retryAfterGesture) {
+    return Promise.resolve().then(() => audio.play()).then(() => {
+      this.clearMusicAutoplayRetry();
+      setMusicButtonState("playing");
+    }).catch(() => {
+      if (retryAfterGesture) this.armMusicAutoplayRetry(audio);
+    });
+  }
+
+  armMusicAutoplayRetry(audio) {
+    if (this.musicAutoplayRetry) return;
+    const retry = () => {
+      if (this.musicAutoplayRetry !== retry) return;
+      this.clearMusicAutoplayRetry();
+      if (audio.src) return this.playMusic(audio, false);
+    };
+    this.musicAutoplayRetry = retry;
+    this.document.addEventListener("pointerdown", retry, { capture: true });
+    this.document.addEventListener("keydown", retry, { capture: true });
   }
 
   async loadCounters() {
@@ -372,6 +401,7 @@ element("music-toggle").addEventListener("click", async () => {
   if (audio.paused) {
     try {
       await audio.play();
+      app.clearMusicAutoplayRetry();
       setMusicButtonState("playing");
     } catch (error) {
       if (error && error.name === "AbortError") return;
