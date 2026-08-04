@@ -232,6 +232,13 @@ int main()
         CHECK(secondPage.comments[0].id == first.id);
         CHECK(secondPage.comments[0].username == username);
 
+        execute(setup.get(),
+                "DELETE FROM artwork_comments WHERE artwork_id = '" + artworkId +
+                "' AND id IN (" + std::to_string(first.id) + ", " +
+                std::to_string(second.id) + ", " + std::to_string(third.id) + ")");
+        const SummaryResult afterCommentCleanup = summary(&dao, artworkId, userId);
+        CHECK(afterCommentCleanup.ok && afterCommentCleanup.commentCount == 0);
+
         const LikeResult removed = unlike(&dao, artworkId, userId);
         CHECK(removed.ok && removed.changed && removed.count == 0 && !removed.liked);
         const SummaryResult afterUnlike = summary(&dao, artworkId, userId);

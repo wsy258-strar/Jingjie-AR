@@ -32,6 +32,7 @@ test("Clipboard API 成功时复制分享 URL", async () => {
 
 test("Clipboard API 被拒绝时使用临时文本框复制", async () => {
   const textarea = {
+    style: {},
     select() { this.selected = true; },
     remove() { this.removed = true; }
   };
@@ -40,7 +41,12 @@ test("Clipboard API 被拒绝时使用临时文本框复制", async () => {
     navigatorObject: { clipboard: { async writeText() { throw new Error("denied"); } } },
     documentObject: {
       createElement(tagName) { assert.equal(tagName, "textarea"); return textarea; },
-      body: { appendChild(node) { appended = node; } },
+      body: {
+        appendChild(node) {
+          assert.equal(node.readOnly, true, "插入前应禁用文本框编辑");
+          appended = node;
+        }
+      },
       execCommand(command) { assert.equal(command, "copy"); return true; }
     },
     url: "https://x/?artwork=a"
@@ -49,6 +55,9 @@ test("Clipboard API 被拒绝时使用临时文本框复制", async () => {
   assert.equal(copied, true);
   assert.equal(appended, textarea);
   assert.equal(textarea.value, "https://x/?artwork=a");
+  assert.equal(textarea.readOnly, true);
+  assert.equal(textarea.style.position, "fixed");
+  assert.equal(textarea.style.left, "-9999px");
   assert.equal(textarea.selected, true);
   assert.equal(textarea.removed, true);
 });

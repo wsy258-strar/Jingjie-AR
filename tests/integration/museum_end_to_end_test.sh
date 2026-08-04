@@ -53,7 +53,7 @@ assert_success "$tmp/bootstrap-a.json"
 visitor_a="$(json_value "$tmp/bootstrap-a.json" 'document["data"]["visitorToken"]')"
 views_after_a="$(json_value "$tmp/bootstrap-a.json" 'document["data"]["totalViews"]')"
 test "$views_after_a" -eq "$((views_before + 1))"
-printf 'PASS 1/8: 游客 A 初始化且浏览量 +1\n'
+printf 'PASS 1/9: 游客 A 初始化且浏览量 +1\n'
 
 request 200 "$tmp/retry-a.json" -X POST "$base_url/api/visitors/session" \
   -H 'Content-Type: application/json' -H "X-Visitor-Token: $visitor_a" \
@@ -61,7 +61,7 @@ request 200 "$tmp/retry-a.json" -X POST "$base_url/api/visitors/session" \
 request 200 "$tmp/views-retry.json" "$base_url/api/statistics/views"
 test "$(json_value "$tmp/views-retry.json" 'document["data"]["totalViews"]')" -eq "$views_after_a"
 test "$(json_value "$tmp/retry-a.json" 'document["data"]["visitorToken"]')" = "$visitor_a"
-printf 'PASS 2/8: 相同请求 ID 重试未重复计数\n'
+printf 'PASS 2/9: 相同请求 ID 重试未重复计数\n'
 
 request 200 "$tmp/bootstrap-b.json" -X POST "$base_url/api/visitors/session" \
   -H 'Content-Type: application/json' --data "{\"bootstrapRequestId\":\"museum-e2e-b-$suffix\"}"
@@ -69,7 +69,7 @@ visitor_b="$(json_value "$tmp/bootstrap-b.json" 'document["data"]["visitorToken"
 test "$visitor_b" != "$visitor_a"
 request 200 "$tmp/presence-two.json" "$base_url/api/presence"
 test "$(json_value "$tmp/presence-two.json" 'document["data"]["onlineCount"]')" -eq 2
-printf 'PASS 3/8: 游客 B 初始化后展馆在线人数为 2\n'
+printf 'PASS 3/9: 游客 B 初始化后展馆在线人数为 2\n'
 
 request 200 "$tmp/catalog.json" "$base_url/api/scenes"
 python3 - "$tmp/catalog.json" "$base_url" "$tmp" <<'PY'

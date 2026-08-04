@@ -777,3 +777,33 @@ test("作品弹窗拒绝不阻断默认场景、访客会话和心跳", async ()
     await harness.cleanup();
   }
 });
+
+test("作品弹窗同步抛错不阻断默认场景、访客会话和心跳", async () => {
+  const harness = await createHarness();
+  try {
+    const opened = [];
+    const artworkModal = {
+      open(artworkId) {
+        opened.push(artworkId);
+        throw new Error("作品详情暂不可用");
+      }
+    };
+    const app = new harness.MuseumApp({
+      artworkModal,
+      locationObject: { href: "https://example.test/?artwork=work-a" }
+    });
+    harness.resolveCatalog();
+    await new Promise((resolve) => setImmediate(resolve));
+    const heartbeatBefore = harness.visitor.heartbeatCalls;
+
+    await app.bootstrap();
+
+    assert.deepEqual(opened, ["work-a"]);
+    assert.equal(app.currentScene.sceneId, "scene-a");
+    assert.equal(harness.document.getElementById("scene-loading").hidden, true);
+    assert.equal(harness.document.getElementById("fatal-error").hidden, true);
+    assert.equal(harness.visitor.heartbeatCalls, heartbeatBefore + 1);
+  } finally {
+    await harness.cleanup();
+  }
+});

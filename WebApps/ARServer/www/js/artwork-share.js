@@ -24,6 +24,12 @@ export async function copyArtworkShareLink({
     }
     textarea = documentObject.createElement("textarea");
     textarea.value = url;
+    textarea.readOnly = true;
+    if (textarea.style) {
+      textarea.style.position = "fixed";
+      textarea.style.left = "-9999px";
+      textarea.style.top = "0";
+    }
     documentObject.body.appendChild(textarea);
     textarea.select();
     return documentObject.execCommand("copy") === true;
