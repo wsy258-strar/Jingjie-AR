@@ -11,6 +11,7 @@ const char* HttpResponse::statusMessage(int code)
     {
     case 200: return "OK";
     case 204: return "No Content";
+    case 206: return "Partial Content";
     case 301: return "Moved Permanently";
     case 304: return "Not Modified";
     case 400: return "Bad Request";

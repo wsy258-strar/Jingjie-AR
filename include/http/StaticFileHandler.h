@@ -16,12 +16,17 @@ class StaticFileHandler
 public:
     /// FilePlan 只保存元数据与状态，避免在 I/O 线程同步读取大文件内容。
     struct FilePlan {
-        FilePlan() : status(HttpResponse::k200Ok), lastModified(0), fileSize(0), isFile(false) {}
+        FilePlan()
+            : status(HttpResponse::k200Ok), lastModified(0), fileSize(0), fileOffset(0),
+              responseSize(0), partial(false), isFile(false) {}
         HttpResponse::HttpStatusCode status;
         std::string path;
         std::string etag;
         time_t lastModified;
         size_t fileSize;
+        size_t fileOffset;
+        size_t responseSize;
+        bool partial;
         bool isFile;
     };
     typedef std::function<bool(const std::string&, CachedFileEntry&)> CacheGet;

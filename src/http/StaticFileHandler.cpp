@@ -7,6 +7,7 @@
 #include <fstream>
 #include <sstream>
 #include <cstring>
+#include <limits>
 #include <sys/stat.h>
 #include <limits.h>
 #include <stdlib.h>
@@ -37,6 +38,57 @@ std::string formatHttpDate(time_t value)
     return buffer;
 }
 
+bool parseUnsignedSize(const std::string& value, size_t* result)
+{
+    if (!result || value.empty()) return false;
+    size_t parsed = 0;
+    for (size_t index = 0; index < value.size(); ++index)
+    {
+        const char character = value[index];
+        if (character < '0' || character > '9') return false;
+        const size_t digit = static_cast<size_t>(character - '0');
+        if (parsed > (std::numeric_limits<size_t>::max() - digit) / 10) return false;
+        parsed = parsed * 10 + digit;
+    }
+    *result = parsed;
+    return true;
+}
+
+bool parseSingleRange(const std::string& value, size_t fileSize,
+                      size_t* offset, size_t* count)
+{
+    if (!offset || !count || fileSize == 0 || value.compare(0, 6, "bytes=") != 0)
+        return false;
+    const std::string range = value.substr(6);
+    if (range.find(',') != std::string::npos) return false;
+    const size_t separator = range.find('-');
+    if (separator == std::string::npos || separator != range.rfind('-')) return false;
+    const std::string first = range.substr(0, separator);
+    const std::string last = range.substr(separator + 1);
+    if (first.empty() && last.empty()) return false;
+
+    if (first.empty())
+    {
+        size_t suffix = 0;
+        if (!parseUnsignedSize(last, &suffix) || suffix == 0) return false;
+        *count = suffix < fileSize ? suffix : fileSize;
+        *offset = fileSize - *count;
+        return true;
+    }
+
+    size_t start = 0;
+    if (!parseUnsignedSize(first, &start) || start >= fileSize) return false;
+    size_t end = fileSize - 1;
+    if (!last.empty())
+    {
+        if (!parseUnsignedSize(last, &end) || end < start) return false;
+        if (end >= fileSize) end = fileSize - 1;
+    }
+    *offset = start;
+    *count = end - start + 1;
+    return true;
+}
+
 } // namespace
 
 bool StaticFileHandler::prepareInRoot(const std::string& root, const HttpRequest& request,
@@ -60,8 +112,21 @@ bool StaticFileHandler::prepareInRoot(const std::string& root, const HttpRequest
     if (stat(resolved, &st) != 0 || !S_ISREG(st.st_mode)) { plan->status = HttpResponse::k404NotFound; return true; }
     std::ostringstream etag; etag << '"' << st.st_ino << '-' << st.st_size << '-' << st.st_mtime << '"';
     plan->path = resolved; plan->etag = etag.str(); plan->lastModified = st.st_mtime;
-    plan->fileSize = static_cast<size_t>(st.st_size); plan->isFile = true;
-    if (!request.getHeader("Range").empty()) { plan->status = HttpResponse::k416RangeNotSatisfiable; return true; }
+    plan->fileSize = static_cast<size_t>(st.st_size);
+    plan->responseSize = plan->fileSize;
+    plan->isFile = true;
+    const std::string& range = request.getHeader("Range");
+    if (!range.empty())
+    {
+        if (!parseSingleRange(range, plan->fileSize, &plan->fileOffset, &plan->responseSize))
+        {
+            plan->status = HttpResponse::k416RangeNotSatisfiable;
+            return true;
+        }
+        plan->status = HttpResponse::k206PartialContent;
+        plan->partial = true;
+        return true;
+    }
     time_t ifModifiedSince = 0;
     const std::string& ifModifiedSinceHeader = request.getHeader("If-Modified-Since");
     if (request.getHeader("If-None-Match") == plan->etag ||
@@ -112,13 +177,25 @@ void StaticFileHandler::populateResponse(const HttpRequest& request, const FileP
 
     response->addHeader("ETag", plan.etag);
     response->addHeader("Last-Modified", formatHttpDate(plan.lastModified));
+    response->addHeader("Accept-Ranges", "bytes");
     response->setContentType(mime(plan.path));
-    if (plan.status != HttpResponse::k200Ok) return;
-    response->addHeader("Content-Length", std::to_string(plan.fileSize));
+    if (plan.status == HttpResponse::k416RangeNotSatisfiable)
+    {
+        response->addHeader("Content-Range", "bytes */" + std::to_string(plan.fileSize));
+        return;
+    }
+    if (plan.status != HttpResponse::k200Ok && plan.status != HttpResponse::k206PartialContent) return;
+    if (plan.partial)
+    {
+        response->addHeader("Content-Range", "bytes " + std::to_string(plan.fileOffset) + "-" +
+                            std::to_string(plan.fileOffset + plan.responseSize - 1) + "/" +
+                            std::to_string(plan.fileSize));
+    }
+    response->addHeader("Content-Length", std::to_string(plan.responseSize));
     if (request.method() == HttpRequest::kHead) return;
     if (plan.fileSize > threshold)
     {
-        response->setFile(plan.path, 0, plan.fileSize);
+        response->setFile(plan.path, static_cast<off_t>(plan.fileOffset), plan.responseSize);
         return;
     }
 
@@ -138,7 +215,7 @@ void StaticFileHandler::populateResponse(const HttpRequest& request, const FileP
         entry.fileSize = plan.fileSize;
         if (put) put(plan.path, entry);
     }
-    response->setBody(entry.content);
+    response->setBody(entry.content.substr(plan.fileOffset, plan.responseSize));
 }
 
 void StaticFileHandler::handleAsync(const HttpRequest& request, const AsyncResponder& responder) const
