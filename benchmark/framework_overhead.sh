@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-base_url=${BASE_URL:-http://127.0.0.1:8080}
+base_url=${BASE_URL:-http://152.136.20.86/}
 duration=${DURATION_SECONDS:-15}
 timeout=${WRK_TIMEOUT_SECONDS:-2}
-concurrencies=${BENCHMARK_CONCURRENCIES:-"10 100 500"}
+concurrencies=${BENCHMARK_CONCURRENCIES:-"10 20 50 100"}
 command -v wrk >/dev/null || { echo 'wrk is required' >&2; exit 2; }
 
 run_case() {
