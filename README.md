@@ -98,7 +98,7 @@ cp WebApps/ARServer/.env.example .env.arserver
 # 编辑 .env.arserver：至少设置 MYSQL_PASSWORD；生产环境还应设置 AR_HOST=127.0.0.1。
 
 set -a
-. ./.env.arserver
+.env.arserver
 set +a
 MYSQL_PWD="$MYSQL_PASSWORD" mysql -h "$MYSQL_HOST" -P "$MYSQL_PORT" \
   -u "$MYSQL_USER" "$MYSQL_DATABASE" < sql/jingjie_ar_schema.sql
