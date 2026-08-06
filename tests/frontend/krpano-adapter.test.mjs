@@ -62,6 +62,8 @@ test("XML 转义覆盖标签、引号、与号和单引号", () => {
 
 test("场景 XML 包含低清预览、高清立方体和视角，且不渲染 inactive 热点", () => {
   const xml = buildSceneXml(scene);
+  assert.match(xml, /fullscreen_mirroring="true"/);
+  assert.match(xml, /mobilevr_fake_support="true"/);
   assert.match(xml, /<plugin name="webvr" devices="html5" keep="true" url="\/assets\/krp\/plugins\/webvr\.js" mobilevr_support="true"/);
   assert.match(xml, /15949056_%s\.jpg/);
   assert.match(xml, /preview\.jpg\?x=1&amp;y=2/);
@@ -459,6 +461,27 @@ test("WebVR 插件事件维护 unknown、available、unavailable 和 entered 状
     assert.equal(adapter.vrState, "entered");
     globalThis.JingjieARWebVrBridge(3);
     assert.equal(adapter.vrState, "available");
+  } finally {
+    if (previousEmbedpano === undefined) delete globalThis.embedpano;
+    else globalThis.embedpano = previousEmbedpano;
+  }
+});
+
+test("WebVR 进入和退出通知应用层切换覆盖 UI", async () => {
+  const previousEmbedpano = globalThis.embedpano;
+  const states = [];
+  const player = { get() { return "0"; }, call() {} };
+  globalThis.embedpano = (options) => options.onready(player);
+
+  try {
+    const adapter = new KrpanoAdapter({
+      targetId: "panorama",
+      onVrStateChange: (state) => states.push(state)
+    });
+    await adapter.initialize();
+    globalThis.JingjieARWebVrBridge(2);
+    globalThis.JingjieARWebVrBridge(3);
+    assert.deepEqual(states, ["entered", "exited"]);
   } finally {
     if (previousEmbedpano === undefined) delete globalThis.embedpano;
     else globalThis.embedpano = previousEmbedpano;

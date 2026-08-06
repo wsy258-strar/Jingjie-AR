@@ -121,6 +121,9 @@ export class MuseumApp {
     this.adapter = new KrpanoAdapter({
       targetId: "panorama",
       onHotspot: (hotspot) => this.handleHotspot(hotspot),
+      onVrStateChange: (state) => {
+        element("museum-fullscreen-root").classList.toggle("is-vr-mode", state === "entered");
+      },
       reducedMotion
     });
   }

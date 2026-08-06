@@ -131,7 +131,7 @@ cmake --build build-full --target ar_server -j2
 
 ```bash
 set -a
-. ./.env.arserver
+.env.arserver
 set +a
 ./build-full/bin/ar_server
 ```
@@ -159,10 +159,6 @@ wrk -t2 -c100 -d30s --latency https://你的域名/api/scenes
 ```
 
 MySQL/Redis 集成测试会写入测试数据，应使用隔离数据库和缓存实例，避免对生产环境直接执行。
-
-## 部署
-
-生产部署、Nginx 缓存与安全头、systemd 发布、回滚及验收流程见 [krpano 展馆生产部署与回滚手册](docs/operations/krpano-museum-deployment.md)。
 
 ## 技术栈
 

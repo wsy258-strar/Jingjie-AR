@@ -56,6 +56,17 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, [tabindex]:fo
   overflow: hidden;
 }
 
+/* krpano 进入真实或模拟 VR 后，仅隐藏站点自己的覆盖层，保留全景和 krpano 退出控件。 */
+.museum-fullscreen-root.is-vr-mode .floating-header,
+.museum-fullscreen-root.is-vr-mode .viewer-toolbar,
+.museum-fullscreen-root.is-vr-mode .view-panel,
+.museum-fullscreen-root.is-vr-mode .scene-drawer-toggle,
+.museum-fullscreen-root.is-vr-mode .scene-drawer,
+.museum-fullscreen-root.is-vr-mode .filing-records,
+.museum-fullscreen-root.is-vr-mode .loading-pill {
+  display: none;
+}
+
 .viewer-panel, .panorama, .scene-dissolve {
   position: absolute;
   inset: 0;

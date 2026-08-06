@@ -108,6 +108,7 @@ export function buildSceneXml(scene, viewOverride = null, viewMode = VIEW_MODES.
     '<krpano version="1.19">',
     '<plugin name="webvr" devices="html5" keep="true"',
     ' url="/assets/krp/plugins/webvr.js" mobilevr_support="true"',
+    ' mobilevr_fake_support="true" fullscreen_mirroring="true"',
     ' onavailable="js(JingjieARWebVrBridge(1));"',
     ' onunavailable="js(JingjieARWebVrBridge(0));"',
     ' onentervr="js(JingjieARWebVrBridge(2));"',
@@ -132,6 +133,7 @@ export class KrpanoAdapter {
     targetId,
     onHotspot,
     reducedMotion = false,
+    onVrStateChange = () => {},
     vrEnterTimeoutMs = 5000,
     setTimeoutFn = (callback, delay) => globalThis.setTimeout(callback, delay),
     clearTimeoutFn = (timerId) => globalThis.clearTimeout(timerId)
@@ -147,6 +149,7 @@ export class KrpanoAdapter {
     this.viewMode = VIEW_MODES.NORMAL;
     this.normalView = null;
     this.reducedMotion = Boolean(reducedMotion);
+    this.onVrStateChange = typeof onVrStateChange === "function" ? onVrStateChange : () => {};
     this.vrState = "unknown";
     this.vrEnterRequest = null;
     this.vrEnterTimeoutMs = Number.isFinite(Number(vrEnterTimeoutMs)) && Number(vrEnterTimeoutMs) > 0
@@ -301,12 +304,14 @@ export class KrpanoAdapter {
     if (event === "entered") {
       if (this.vrEnterRequest) this.finishVrEnter(null, "entered");
       else this.vrState = "entered";
+      this.onVrStateChange("entered");
       return;
     }
     if (event === "exited") {
       if (this.vrEnterRequest)
         this.finishVrEnter(new Error("VR 进入已取消，请重试"), "available");
       else this.vrState = "available";
+      this.onVrStateChange("exited");
     }
   }
 

@@ -677,6 +677,20 @@ test("VR 异步拒绝由 click handler await/catch 并保留全景状态", async
   }
 });
 
+test("VR 进入和退出仅切换网站覆盖控件的根状态", async () => {
+  const harness = await createHarness();
+  try {
+    const root = harness.document.getElementById("museum-fullscreen-root");
+    assert.equal(typeof harness.adapter.options.onVrStateChange, "function");
+    harness.adapter.options.onVrStateChange("entered");
+    assert.equal(root.classList.contains("is-vr-mode"), true);
+    harness.adapter.options.onVrStateChange("exited");
+    assert.equal(root.classList.contains("is-vr-mode"), false);
+  } finally {
+    await harness.cleanup();
+  }
+});
+
 test("目录加载完成前禁用的音乐按钮立即呈现无音乐状态", async () => {
   const harness = await createHarness();
   try {
