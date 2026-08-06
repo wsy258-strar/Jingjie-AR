@@ -7,6 +7,7 @@ import { ArtworkModal } from "./artwork-modal.js";
 import { MuseumLifecycle } from "./museum-lifecycle.js";
 import { ModalFocusManager } from "./modal-focus.js";
 import { MuseumUiState } from "./museum-ui-state.js";
+import { SceneDissolve } from "./scene-dissolve.js";
 
 const api = new ApiClient();
 let loginWaiter = null;
@@ -111,6 +112,10 @@ export class MuseumApp {
     this.document = document;
     this.musicUrl = "";
     this.musicAutoplayRetry = null;
+    this.sceneDissolve = new SceneDissolve({
+      viewer: element("panorama"),
+      overlay: element("scene-dissolve")
+    });
     const reducedMotion = typeof window.matchMedia === "function" &&
       window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     this.adapter = new KrpanoAdapter({
@@ -178,23 +183,38 @@ export class MuseumApp {
     if (this.sceneController) this.sceneController.abort();
     const controller = new AbortController();
     this.sceneController = controller;
+    const shouldDissolve = Boolean(this.currentScene) && this.sceneDissolve.begin(generation);
     element("scene-loading").hidden = false;
 
     try {
       const scene = await api.request(`/api/scenes/${encodeURIComponent(sceneId)}`, {
         signal: controller.signal
       });
-      if (generation !== this.sceneGeneration) return false;
+      if (generation !== this.sceneGeneration) {
+        this.sceneDissolve.cancel(generation);
+        return false;
+      }
       const loaded = await this.adapter.loadScene(scene, generation);
-      if (!loaded || generation !== this.sceneGeneration) return false;
+      if (!loaded || generation !== this.sceneGeneration) {
+        this.sceneDissolve.cancel(generation);
+        return false;
+      }
       this.currentScene = scene;
       this.markCurrentScene(scene.sceneId);
       this.configureMusic(scene.music);
       element("scene-loading").hidden = true;
+      if (shouldDissolve) this.sceneDissolve.finish(generation);
       return true;
     } catch (error) {
-      if (error && error.name === "AbortError") return false;
-      if (generation !== this.sceneGeneration) return false;
+      if (error && error.name === "AbortError") {
+        this.sceneDissolve.cancel(generation);
+        return false;
+      }
+      if (generation !== this.sceneGeneration) {
+        this.sceneDissolve.cancel(generation);
+        return false;
+      }
+      this.sceneDissolve.cancel(generation);
       element("scene-loading").hidden = true;
       notify(error.message || "场景加载失败，已保留当前画面");
       return false;

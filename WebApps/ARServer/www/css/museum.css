@@ -56,7 +56,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, [tabindex]:fo
   overflow: hidden;
 }
 
-.viewer-panel, .panorama {
+.viewer-panel, .panorama, .scene-dissolve {
   position: absolute;
   inset: 0;
 }
@@ -64,6 +64,28 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, [tabindex]:fo
 .viewer-panel {
   overflow: hidden;
   background: #090908;
+}
+
+.scene-dissolve {
+  z-index: 2;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+}
+
+.scene-dissolve.is-held {
+  visibility: visible;
+  opacity: 1;
+  transition: none;
+}
+
+.scene-dissolve.is-dissolving {
+  visibility: visible;
+  opacity: 0;
+  transition: opacity .36s ease;
 }
 
 .glass-group, .glass-button, .icon-button {
@@ -241,21 +263,22 @@ button:disabled { cursor: not-allowed; opacity: .5; }
 .scene-drawer-toggle {
   position: absolute;
   z-index: 8;
-  left: 1rem;
-  bottom: 1rem;
+  left: .8rem;
+  bottom: calc(8.1rem + env(safe-area-inset-bottom));
   display: grid;
   justify-items: center;
-  gap: .2rem;
+  gap: .12rem;
   border: 0;
   color: #fff;
   background: transparent;
   cursor: pointer;
+  font-size: 16px;
   text-shadow: 0 1px 6px #000;
 }
 
 .scene-drawer-toggle svg {
-  width: 42px;
-  height: 42px;
+  width: 44px;
+  height: 44px;
   padding: 10px;
   border-radius: 50%;
   color: #4a4032;
@@ -266,10 +289,10 @@ button:disabled { cursor: not-allowed; opacity: .5; }
   position: absolute;
   z-index: 6;
   right: 0;
-  bottom: calc(3.35rem + env(safe-area-inset-bottom));
+  bottom: 0;
   left: 0;
-  padding: .5rem 4.75rem .5rem 6.7rem;
-  background: linear-gradient(90deg, rgba(18, 17, 14, .72), rgba(18, 17, 14, .52));
+  padding: .4rem 11rem .4rem 6.5rem;
+  background: linear-gradient(90deg, rgba(18, 17, 14, .62), rgba(18, 17, 14, .4));
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   transform: translateY(105%);
@@ -280,24 +303,22 @@ button:disabled { cursor: not-allowed; opacity: .5; }
 
 .filing-records {
   position: absolute;
-  z-index: 7;
-  right: 1rem;
+  z-index: 12;
+  right: .8rem;
   bottom: calc(.55rem + env(safe-area-inset-bottom));
   display: flex;
   align-items: center;
   justify-content: flex-end;
   gap: .45rem;
   max-width: calc(100% - 2rem);
-  padding: .32rem .52rem;
-  border: 1px solid rgba(246, 241, 230, .1);
-  border-radius: 4px;
+  padding: 0;
+  border: 0;
   color: rgba(246, 241, 230, .62);
-  background: rgba(16, 15, 13, .34);
+  background: transparent;
   font: .7rem/1.2 system-ui, sans-serif;
   text-align: right;
   white-space: nowrap;
-  backdrop-filter: blur(5px);
-  -webkit-backdrop-filter: blur(5px);
+  text-shadow: 0 1px 4px rgba(0, 0, 0, .78);
 }
 
 .filing-records a {
@@ -315,35 +336,53 @@ button:disabled { cursor: not-allowed; opacity: .5; }
 
 .scene-catalog {
   display: flex;
-  gap: .55rem;
+  justify-content: center;
+  gap: .8rem;
   overflow-x: auto;
   overscroll-behavior-inline: contain;
   scrollbar-width: thin;
 }
 
 .scene-card {
-  flex: 0 0 112px;
-  display: grid;
-  padding: 4px;
+  position: relative;
+  flex: 0 0 100px;
+  width: 100px;
+  height: 100px;
+  display: block;
+  padding: 0;
   border: 2px solid rgba(255, 255, 255, .8);
+  border-radius: 8px;
   color: inherit;
   background: rgba(10, 10, 9, .58);
   cursor: pointer;
+  overflow: hidden;
 }
 
 .scene-card img {
+  position: absolute;
+  inset: 0;
   width: 100%;
-  height: 78px;
+  height: 100%;
+  border-radius: 6px;
   object-fit: cover;
   background: #25221c;
 }
 
 .scene-card span {
-  padding: .35rem .2rem .15rem;
+  position: absolute;
+  z-index: 1;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  padding: .8rem .25rem .28rem;
   overflow: hidden;
+  background: linear-gradient(transparent, rgba(0, 0, 0, .78));
+  font-size: .82rem;
+  line-height: 1.15;
   text-align: center;
   text-overflow: ellipsis;
   white-space: nowrap;
+  text-shadow: 0 1px 3px #000;
 }
 
 .scene-card:hover, .scene-card.is-current {
@@ -777,24 +816,50 @@ textarea { resize: vertical; }
   }
 
   .scene-drawer {
-    bottom: calc(2.85rem + env(safe-area-inset-bottom));
-    padding: .45rem .55rem .45rem 5.65rem;
+    bottom: calc(2.4rem + env(safe-area-inset-bottom));
+    padding: .35rem .5rem;
   }
 
-  .scene-catalog { gap: .45rem; }
+  .scene-catalog {
+    justify-content: flex-start;
+    gap: .6rem;
+  }
 
   .filing-records {
     right: .55rem;
     bottom: calc(.35rem + env(safe-area-inset-bottom));
     max-width: calc(100% - 1.1rem);
-    padding: .22rem .35rem;
     font-size: .56rem;
     gap: .28rem;
   }
 
-  .scene-card { flex-basis: 76px; }
+  .scene-card {
+    flex-basis: 66px;
+    width: 66px;
+    height: 66px;
+  }
 
-  .scene-card img { height: 58px; }
+  .scene-card img {
+    width: 100%;
+    height: 100%;
+  }
+
+  .scene-card span {
+    padding: .65rem .18rem .18rem;
+    font-size: 12px;
+  }
+
+  .scene-drawer-toggle {
+    left: .65rem;
+    bottom: calc(7.9rem + env(safe-area-inset-bottom));
+    font-size: 12px;
+  }
+
+  .scene-drawer-toggle svg {
+    width: 36px;
+    height: 36px;
+    padding: 8px;
+  }
 
   .artwork-card { --artwork-composer-height: 4.6rem; }
 

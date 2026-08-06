@@ -180,7 +180,7 @@ const ELEMENT_IDS = [
   "login-submit", "login-username", "museum-description", "museum-fullscreen-root", "museum-shell",
   "museum-title", "music-toggle", "notice", "online-count", "panorama",
   "retry-bootstrap", "scene-audio", "scene-catalog", "scene-drawer",
-  "scene-drawer-toggle", "scene-loading", "total-views", "view-panel",
+  "scene-dissolve", "scene-drawer-toggle", "scene-loading", "total-views", "view-panel",
   "view-toggle", "vr-toggle"
 ];
 
@@ -306,7 +306,7 @@ async function createHarness({ reducedMotion = false, locationHref = "https://ex
   source = source.replace(/^import .*;\n/gm, "");
   source = `const {
     ApiClient, ApiError, AuthSession, VisitorSession, KrpanoAdapter, ArtworkModal,
-    MuseumLifecycle, ModalFocusManager, MuseumUiState
+    MuseumLifecycle, ModalFocusManager, MuseumUiState, SceneDissolve
   } = globalThis.__museumAppTestDeps;\n${source}`;
   source += `
 globalThis.__museumAppTestInstance = app;
@@ -372,6 +372,17 @@ globalThis.__museumVisitorSession = visitor;
     async bootstrapVisitorOnce() { return null; }
     startCounterPolling() {}
   }
+  class SceneDissolve {
+    constructor() {
+      this.beginCalls = [];
+      this.finishCalls = [];
+      this.cancelCalls = [];
+      globalThis.__museumSceneDissolve = this;
+    }
+    begin(generation) { this.beginCalls.push(generation); return true; }
+    finish(generation) { this.finishCalls.push(generation); return true; }
+    cancel(generation) { this.cancelCalls.push(generation); return true; }
+  }
   class KrpanoAdapter {
     constructor(options) {
       this.options = options;
@@ -403,6 +414,7 @@ globalThis.__museumVisitorSession = visitor;
     window: globalThis.window,
     deps: globalThis.__museumAppTestDeps,
     adapter: globalThis.__museumAppAdapter,
+    dissolve: globalThis.__museumSceneDissolve,
     app: globalThis.__museumAppTestInstance,
     appClass: globalThis.__museumAppTestClass,
     artworkIdFromLocation: globalThis.__museumArtworkIdFromLocation,
@@ -412,11 +424,12 @@ globalThis.__museumVisitorSession = visitor;
   globalThis.window = window;
   globalThis.__museumAppTestDeps = {
     ApiClient, ApiError, AuthSession, VisitorSession, KrpanoAdapter, ArtworkModal,
-    MuseumLifecycle, ModalFocusManager, MuseumUiState: MuseumUiStateStub
+    MuseumLifecycle, ModalFocusManager, MuseumUiState: MuseumUiStateStub, SceneDissolve
   };
 
   await import(`${pathToFileURL(modulePath).href}?case=${Date.now()}-${Math.random()}`);
   const adapter = globalThis.__museumAppAdapter;
+  const dissolve = globalThis.__museumSceneDissolve;
   const app = globalThis.__museumAppTestInstance;
   const MuseumApp = globalThis.__museumAppTestClass;
   const artworkIdFromLocation = globalThis.__museumArtworkIdFromLocation;
@@ -428,6 +441,7 @@ globalThis.__museumVisitorSession = visitor;
     artworkIdFromLocation,
     visitor,
     adapter,
+    dissolve,
     document,
     window,
     resolveCatalog(catalog = defaultCatalog) { resolveCatalog(catalog); },
@@ -437,6 +451,7 @@ globalThis.__museumVisitorSession = visitor;
       globalThis.window = previous.window;
       globalThis.__museumAppTestDeps = previous.deps;
       globalThis.__museumAppAdapter = previous.adapter;
+      globalThis.__museumSceneDissolve = previous.dissolve;
       globalThis.__museumAppTestInstance = previous.app;
       globalThis.__museumAppTestClass = previous.appClass;
       globalThis.__museumArtworkIdFromLocation = previous.artworkIdFromLocation;
@@ -570,6 +585,22 @@ test("所有 hotspot 分支在业务动作前统一关闭临时浮层", async ()
 
     assert.deepEqual(closeSnapshots, [true, true, true, true]);
     assert.deepEqual(switchSnapshots, [{ sceneId: "scene-2", drawerHidden: true }]);
+  } finally {
+    await harness.cleanup();
+  }
+});
+
+test("首次加载不叠化，后续场景切换在成功后叠化旧全景快照", async () => {
+  const harness = await createHarness();
+  try {
+    assert.ok(harness.dissolve);
+    await harness.app.switchScene("scene-a");
+    assert.deepEqual(harness.dissolve.beginCalls, []);
+    assert.deepEqual(harness.dissolve.finishCalls, []);
+
+    await harness.app.switchScene("scene-a");
+    assert.deepEqual(harness.dissolve.beginCalls, [2]);
+    assert.deepEqual(harness.dissolve.finishCalls, [2]);
   } finally {
     await harness.cleanup();
   }
