@@ -1,5 +1,7 @@
 # ==================== 构建产物 ====================
 build/
+build-debug/
+build-full/
 bin/
 lib/
 *.o
@@ -51,6 +53,33 @@ core
 # ==================== 本地运行配置（绝不提交） ====================
 .env.arserver
 C:Users32284.sshconfig
+
+# 通用环境配置：仅保留可公开的示例文件
+.env
+.env.*
+!.env.example
+!**/.env.example
+
+# TLS 证书、私钥与导出文件
+*.pem
+*.key
+*.crt
+*.cer
+*.der
+*.p12
+*.pfx
+
+# 本地数据库与数据备份（保留 sql/ 下受版本管理的建表脚本）
+*.sql.gz
+*.dump
+*.sqlite
+*.sqlite3
+*.db
+backups/
+backup/
+
+# 压测每次运行生成的原始结果不进入仓库；说明文档已跟踪则不受影响
+benchmark/results/
 
 # krpano 授权运行文件由 scripts/provision_krpano.sh 安装
 WebApps/ARServer/www/assets/krp/runtime/
