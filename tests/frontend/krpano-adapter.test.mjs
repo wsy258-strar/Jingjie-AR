@@ -102,8 +102,8 @@ test("场景与展品热点分别注册循环引导动效，并在点击前停�
   assert.match(xml, /tween\(caller\.scale,1\.14,0\.75/);
   assert.match(xml, /tween\(caller\.alpha,0\.65,0\.75/);
   assert.match(xml, /tween\(caller\.oy,-12,0\.75/);
-  assert.match(xml, /tween\(caller\.scale,1\.12,1\.1/);
-  assert.match(xml, /tween\(caller\.alpha,1,1\.1/);
+  assert.match(xml, /tween\(caller\.scale,1\.12,0\.55,default, tween\(caller\.scale,1,0\.55\)\)/);
+  assert.match(xml, /tween\(caller\.alpha,1,0\.55,default, tween\(caller\.alpha,0\.85,0\.55/);
   assert.match(xml, /onloaded="scene_hotspot_pulse\(\);"/);
   assert.match(xml, /onloaded="artwork_hotspot_pulse\(\);"/);
   assert.match(xml, /onclick="stoptween\(caller\.scale\); stoptween\(caller\.alpha\); stoptween\(caller\.oy\); js\(JingjieARHotspotBridge\(0\)\);"/);

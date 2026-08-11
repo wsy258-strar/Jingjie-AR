@@ -11,3 +11,9 @@
 
 - RED：新增 scene/artwork XML、点击停动效、reduced-motion 无循环测试后，Node 20 运行得到 26 通过、2 失败；失败原因为脉冲 action 和 `stoptween` 尚未生成。
 - GREEN：实现动态 XML 后，使用 `/tmp/node-v20.19.5-linux-x64/bin/node --test --test-reporter=spec tests/frontend/krpano-adapter.test.mjs`，结果为 1 个测试文件通过（其中 28 个子测试通过）。
+
+#### P2 修复：展品热点呼吸周期
+
+- 根因：`artwork_hotspot_pulse` 的放大和还原阶段均为 1.1 秒，串联后单个完整呼吸周期为 2.2 秒。
+- 修复：缩放和透明度的放大、还原阶段统一改为 0.55 秒，使完整周期为 1.1 秒。
+- TDD：先将断言改为验证两个阶段各 0.55 秒；旧实现下 Node 20 测试按预期失败，修复后测试通过。
