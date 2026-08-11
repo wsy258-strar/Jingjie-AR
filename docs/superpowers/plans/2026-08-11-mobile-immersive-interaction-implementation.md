@@ -30,7 +30,7 @@
 - Create: tests/frontend/fullscreen-orientation.test.mjs
 - Create: tests/frontend/audio-control-state.test.mjs
 - Copy: pano/html/assets/krp/1.20.7/plugins/gyro2.js → WebApps/ARServer/www/assets/krp/plugins/gyro2.js
-- Copy: img/beian_icon.png → WebApps/ARServer/www/assets/filing/beian_icon.png
+- Copy (source stays local and ignored): img/beian_icon.png → WebApps/ARServer/www/assets/filing/beian_icon.png
 - Modify: WebApps/ARServer/www/js/krpano-adapter.js — Gyro2、热点动作和场景事件桥。
 - Modify: WebApps/ARServer/www/js/scene-dissolve.js — 自适应交叉叠化状态机。
 - Modify: WebApps/ARServer/www/js/artwork-gallery.js — 移动端顶层图片手势。
@@ -394,7 +394,7 @@ Expected: 两类热点动效可区分，减少动态效果时无循环。
 ### Task 8: 公安备案图标接口与静态资源检查
 
 **Files:**
-- Copy: img/beian_icon.png
+- Copy from local ignored source: img/beian_icon.png
 - Modify: WebApps/ARServer/www/index.html
 - Modify: WebApps/ARServer/www/css/museum.css
 - Modify: tests/integration/museum_frontend_static_test.sh
@@ -432,10 +432,10 @@ Run:
 
     bash tests/integration/museum_frontend_static_test.sh
     bash tests/integration/assets_manifest_test.sh
-    git add img/beian_icon.png WebApps/ARServer/www/assets/filing/beian_icon.png WebApps/ARServer/www/index.html WebApps/ARServer/www/css/museum.css tests/integration/museum_frontend_static_test.sh tests/integration/assets_manifest_test.sh
+    git add WebApps/ARServer/www/assets/filing/beian_icon.png WebApps/ARServer/www/index.html WebApps/ARServer/www/css/museum.css tests/integration/museum_frontend_static_test.sh tests/integration/assets_manifest_test.sh
     git commit -m "增加公安联网备案图标接口"
 
-Expected: 图标文件可访问，链接文字在图标失败时仍可见。
+Expected: 图标文件可访问，链接文字在图标失败时仍可见，仓库根目录的 img/beian_icon.png 不进入提交。
 
 ### Task 9: 完整回归与移动端人工验收
 
