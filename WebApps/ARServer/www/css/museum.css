@@ -87,16 +87,27 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, [tabindex]:fo
   visibility: hidden;
 }
 
-.scene-dissolve.is-held {
+.scene-dissolve.is-releasing {
   visibility: visible;
-  opacity: 1;
-  transition: none;
+  animation: scene-dissolve-release .9s ease-out forwards;
 }
 
-.scene-dissolve.is-dissolving {
+.scene-dissolve.is-waiting {
+  visibility: visible;
+  opacity: .18;
+  animation: none;
+}
+
+.scene-dissolve.is-completing {
   visibility: visible;
   opacity: 0;
-  transition: opacity .36s ease;
+  animation: none;
+  transition: opacity var(--scene-dissolve-complete-ms, 600ms) ease;
+}
+
+@keyframes scene-dissolve-release {
+  from { opacity: 1; }
+  to { opacity: .18; }
 }
 
 .glass-group, .glass-button, .icon-button {

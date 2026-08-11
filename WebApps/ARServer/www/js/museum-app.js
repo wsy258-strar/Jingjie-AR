@@ -159,6 +159,10 @@ export class MuseumApp {
       onVrStateChange: (state) => {
         element("museum-fullscreen-root").classList.toggle("is-vr-mode", state === "entered");
       },
+      onSceneEvent: ({ type, generation }) => {
+        if (type === "preview-visible") this.sceneDissolve.markPreviewVisible(generation);
+        else if (type === "complete") this.sceneDissolve.complete(generation);
+      },
       reducedMotion
     });
     this.gyro = new GyroController({
@@ -243,7 +247,6 @@ export class MuseumApp {
     if (this.sceneController) this.sceneController.abort();
     const controller = new AbortController();
     this.sceneController = controller;
-    const shouldDissolve = Boolean(this.currentScene) && this.sceneDissolve.begin(generation);
     element("scene-loading").hidden = false;
 
     try {
@@ -254,6 +257,7 @@ export class MuseumApp {
         this.sceneDissolve.cancel(generation);
         return false;
       }
+      this.sceneDissolve.begin({ generation, fallbackUrl: scene.previewUrl });
       const loaded = await this.adapter.loadScene(scene, generation);
       if (!loaded || generation !== this.sceneGeneration) {
         this.sceneDissolve.cancel(generation);
@@ -264,7 +268,6 @@ export class MuseumApp {
       this.markCurrentScene(scene.sceneId);
       this.configureMusic(scene.music);
       element("scene-loading").hidden = true;
-      if (shouldDissolve) this.sceneDissolve.finish(generation);
       return true;
     } catch (error) {
       if (error && error.name === "AbortError") {

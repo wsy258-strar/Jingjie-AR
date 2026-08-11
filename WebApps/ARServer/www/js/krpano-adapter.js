@@ -35,12 +35,18 @@ function isSupportedViewMode(mode) {
 
 let hotspotBridge = null;
 let webVrBridge = null;
+let sceneEventBridge = null;
 
 const WEBVR_EVENTS = Object.freeze({
   0: "unavailable",
   1: "available",
   2: "entered",
   3: "exited"
+});
+
+const SCENE_EVENTS = Object.freeze({
+  0: "preview-visible",
+  1: "complete"
 });
 
 globalThis.JingjieARHotspotBridge = function (index) {
@@ -50,6 +56,13 @@ globalThis.JingjieARHotspotBridge = function (index) {
 globalThis.JingjieARWebVrBridge = function (eventCode) {
   const event = WEBVR_EVENTS[Number(eventCode)];
   if (event && webVrBridge) webVrBridge(event);
+};
+
+globalThis.JingjieARSceneBridge = function (eventCode, generation) {
+  const type = SCENE_EVENTS[Number(eventCode)];
+  const requestedGeneration = Number(generation);
+  if (type && Number.isFinite(requestedGeneration) && sceneEventBridge)
+    sceneEventBridge({ type, generation: requestedGeneration });
 };
 
 export function xmlEscape(value) {
@@ -91,8 +104,14 @@ function renderableHotspots(scene) {
     : [];
 }
 
-export function buildSceneXml(scene, viewOverride = null, viewMode = VIEW_MODES.NORMAL) {
+export function buildSceneXml(
+  scene,
+  viewOverride = null,
+  viewMode = VIEW_MODES.NORMAL,
+  generation = -1
+) {
   const view = viewFor(scene, viewOverride, viewMode);
+  const sceneGeneration = finiteNumber(generation, -1);
   const hotspots = renderableHotspots(scene);
   const hotspotXml = hotspots.map((hotspot, index) => [
     '<hotspot name="', xmlEscape(hotspot.hotspotId || `hotspot-${index}`),
@@ -116,6 +135,9 @@ export function buildSceneXml(scene, viewOverride = null, viewMode = VIEW_MODES.
     '<plugin name="gyro" devices="html5" keep="true"',
     ' url="/assets/krp/plugins/gyro2.js" enabled="false"',
     ' camroll="true" friction="0.5" />',
+    '<events name="jingjie_scene_events"',
+    ' onpreviewcomplete="js(JingjieARSceneBridge(0,', sceneGeneration, '));"',
+    ' onloadcomplete="js(JingjieARSceneBridge(1,', sceneGeneration, '));" />',
     '<preview url="', xmlEscape(scene.previewUrl), '" />',
     '<image><cube url="', xmlEscape(scene.cubeUrl), '" /></image>',
     '<view hlookat="', view.hlookat, '" vlookat="', view.vlookat,
@@ -135,6 +157,7 @@ export class KrpanoAdapter {
   constructor({
     targetId,
     onHotspot,
+    onSceneEvent = () => {},
     reducedMotion = false,
     onVrStateChange = () => {},
     vrEnterTimeoutMs = 5000,
@@ -144,6 +167,7 @@ export class KrpanoAdapter {
     if (!targetId) throw new Error("KrpanoAdapter requires targetId");
     this.targetId = targetId;
     this.onHotspot = typeof onHotspot === "function" ? onHotspot : () => {};
+    this.onSceneEvent = typeof onSceneEvent === "function" ? onSceneEvent : () => {};
     this.player = null;
     this.initializePromise = null;
     this.latestGeneration = -1;
@@ -191,6 +215,9 @@ export class KrpanoAdapter {
               if (hotspot) this.onHotspot(hotspot);
             };
             webVrBridge = (event) => this.handleVrEvent(event);
+            sceneEventBridge = (event) => {
+              if (event.generation === this.latestGeneration) this.onSceneEvent(event);
+            };
             resolve(player);
           },
           onerror: fail
@@ -351,7 +378,7 @@ export class KrpanoAdapter {
 
     const preservedView = this.loaded ? this.getView() : null;
     const nextHotspots = renderableHotspots(scene);
-    const xml = buildSceneXml(scene, preservedView, this.viewMode);
+    const xml = buildSceneXml(scene, preservedView, this.viewMode, requestedGeneration);
     this.player.call(`loadxml('${krpanoActionString(xml)}', null, RESET);`);
     this.currentHotspots = nextHotspots;
     this.loaded = true;

@@ -353,7 +353,8 @@ globalThis.__museumVisitorSession = visitor;
   class ApiClient {
     async request(path) {
       if (path === "/api/scenes") return catalogPromise;
-      if (path === "/api/scenes/scene-a") return { sceneId: "scene-a", music: {} };
+      if (path === "/api/scenes/scene-a")
+        return { sceneId: "scene-a", previewUrl: "/preview-a.jpg", music: {} };
       if (path === "/api/statistics/views") {
         return { statisticsAvailable: false, totalViews: null };
       }
@@ -379,12 +380,19 @@ globalThis.__museumVisitorSession = visitor;
   class SceneDissolve {
     constructor() {
       this.beginCalls = [];
-      this.finishCalls = [];
+      this.previewCalls = [];
+      this.completeCalls = [];
       this.cancelCalls = [];
+      this.events = [];
       globalThis.__museumSceneDissolve = this;
     }
-    begin(generation) { this.beginCalls.push(generation); return true; }
-    finish(generation) { this.finishCalls.push(generation); return true; }
+    begin(options) {
+      this.beginCalls.push(options);
+      this.events.push({ type: "begin", generation: options.generation });
+      return true;
+    }
+    markPreviewVisible(generation) { this.previewCalls.push(generation); return true; }
+    complete(generation) { this.completeCalls.push(generation); return true; }
     cancel(generation) { this.cancelCalls.push(generation); return true; }
   }
   class KrpanoAdapter {
@@ -397,7 +405,11 @@ globalThis.__museumVisitorSession = visitor;
       globalThis.__museumAppAdapter = this;
     }
     invalidate() {}
-    async loadScene() {
+    async loadScene(_scene, generation) {
+      globalThis.__museumSceneDissolve.events.push({
+        type: "loadScene", generation
+      });
+      if (this.loadError) throw this.loadError;
       this.gyroAvailable = true;
       return true;
     }
@@ -729,17 +741,50 @@ test("所有 hotspot 分支在业务动作前统一关闭临时浮层", async ()
   }
 });
 
-test("首次加载不叠化，后续场景切换在成功后叠化旧全景快照", async () => {
+test("首次加载以预览 URL 承载，并在拿到详情后先 begin 再调用 loadScene", async () => {
   const harness = await createHarness();
   try {
     assert.ok(harness.dissolve);
     await harness.app.switchScene("scene-a");
-    assert.deepEqual(harness.dissolve.beginCalls, []);
-    assert.deepEqual(harness.dissolve.finishCalls, []);
+    assert.deepEqual(harness.dissolve.beginCalls, [{
+      generation: 1,
+      fallbackUrl: "/preview-a.jpg"
+    }]);
+    assert.deepEqual(harness.dissolve.events, [
+      { type: "begin", generation: 1 },
+      { type: "loadScene", generation: 1 }
+    ]);
+    assert.deepEqual(harness.dissolve.completeCalls, []);
+  } finally {
+    await harness.cleanup();
+  }
+});
 
+test("适配器场景事件按 generation 推进预览和完整加载状态", async () => {
+  const harness = await createHarness();
+  try {
     await harness.app.switchScene("scene-a");
-    assert.deepEqual(harness.dissolve.beginCalls, [2]);
-    assert.deepEqual(harness.dissolve.finishCalls, [2]);
+    harness.adapter.options.onSceneEvent({ type: "preview-visible", generation: 1 });
+    harness.adapter.options.onSceneEvent({ type: "complete", generation: 1 });
+    assert.deepEqual(harness.dissolve.previewCalls, [1]);
+    assert.deepEqual(harness.dissolve.completeCalls, [1]);
+  } finally {
+    await harness.cleanup();
+  }
+});
+
+test("场景加载失败时取消当前叠化并清理 loading 状态", async () => {
+  const harness = await createHarness();
+  try {
+    harness.adapter.loadError = new Error("loadxml failed");
+    assert.equal(await harness.app.switchScene("scene-a"), false);
+    assert.deepEqual(harness.dissolve.beginCalls, [{
+      generation: 1,
+      fallbackUrl: "/preview-a.jpg"
+    }]);
+    assert.deepEqual(harness.dissolve.cancelCalls, [1]);
+    assert.equal(harness.document.getElementById("scene-loading").hidden, true);
+    assert.match(harness.document.getElementById("notice").textContent, /loadxml failed/);
   } finally {
     await harness.cleanup();
   }

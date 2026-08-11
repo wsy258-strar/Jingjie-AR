@@ -61,7 +61,7 @@ test("XML 转义覆盖标签、引号、与号和单引号", () => {
 });
 
 test("场景 XML 包含低清预览、高清立方体和视角，且不渲染 inactive 热点", () => {
-  const xml = buildSceneXml(scene);
+  const xml = buildSceneXml(scene, null, VIEW_MODES.NORMAL, 12);
   assert.match(xml, /fullscreen_mirroring="true"/);
   assert.match(xml, /mobilevr_fake_support="true"/);
   assert.match(xml, /<plugin name="webvr" devices="html5" keep="true" url="\/assets\/krp\/plugins\/webvr\.js" mobilevr_support="true"/);
@@ -75,6 +75,8 @@ test("场景 XML 包含低清预览、高清立方体和视角，且不渲染 in
   assert.doesNotMatch(xml, /type="scene"/);
   assert.doesNotMatch(xml, /type="inactive"/);
   assert.doesNotMatch(xml, /inactive-hotspot/);
+  assert.match(xml, /onpreviewcomplete="js\(JingjieARSceneBridge\(0,12\)\);"/);
+  assert.match(xml, /onloadcomplete="js\(JingjieARSceneBridge\(1,12\)\);"/);
 });
 
 test("场景 XML 注册 Gyro2 且默认由页面控制启用", () => {
@@ -165,6 +167,38 @@ test("播放器仅嵌入一次，旧 generation 不能覆盖新场景", async ()
     assert.equal(await adapter.loadScene({ ...scene, sceneId: "old" }, 1), false);
     assert.equal(calls.length, 1);
     assert.match(calls[0], /15949056_%s\.jpg/);
+  } finally {
+    if (previousEmbedpano === undefined) delete globalThis.embedpano;
+    else globalThis.embedpano = previousEmbedpano;
+  }
+});
+
+test("场景事件桥只向应用层转发最新 generation", async () => {
+  const previousEmbedpano = globalThis.embedpano;
+  const events = [];
+  const calls = [];
+  const player = {
+    get() { return "0"; },
+    call(command) { calls.push(command); }
+  };
+  globalThis.embedpano = (options) => options.onready(player);
+
+  try {
+    const adapter = new KrpanoAdapter({
+      targetId: "panorama",
+      onSceneEvent(event) { events.push(event); }
+    });
+    await adapter.loadScene(scene, 4);
+    assert.match(calls.at(-1), /JingjieARSceneBridge\(0,4\)/);
+    globalThis.JingjieARSceneBridge(0, 3);
+    globalThis.JingjieARSceneBridge(1, 3);
+    assert.deepEqual(events, []);
+    globalThis.JingjieARSceneBridge(0, 4);
+    globalThis.JingjieARSceneBridge(1, 4);
+    assert.deepEqual(events, [
+      { type: "preview-visible", generation: 4 },
+      { type: "complete", generation: 4 }
+    ]);
   } finally {
     if (previousEmbedpano === undefined) delete globalThis.embedpano;
     else globalThis.embedpano = previousEmbedpano;
