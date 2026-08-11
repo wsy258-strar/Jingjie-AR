@@ -387,6 +387,13 @@ export class MuseumApp {
 }
 
 const app = new MuseumApp();
+const policeFilingIcon = element("police-filing-icon");
+
+if (policeFilingIcon) {
+  policeFilingIcon.addEventListener("error", () => {
+    policeFilingIcon.hidden = true;
+  }, { once: true });
+}
 
 element("description-open").addEventListener("click", () => {
   suspendGyroForModal();

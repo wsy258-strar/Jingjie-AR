@@ -64,7 +64,11 @@
     <a id="icp-filing-link" href="https://beian.miit.gov.cn/" target="_blank" rel="noopener noreferrer">您的ICP备案号</a>
     <span class="filing-separator" aria-hidden="true">|</span>
     <!-- 公安审核后，将文字和链接替换为平台生成的公安联网备案信息。 -->
-    <a id="police-filing-link" href="https://www.beian.gov.cn/" target="_blank" rel="noopener noreferrer">您的公安联网备案号</a>
+    <a id="police-filing-link" href="https://www.beian.gov.cn/" target="_blank" rel="noopener noreferrer">
+      <!-- 可将 src 替换为公安备案平台要求的正式图标地址。 -->
+      <img id="police-filing-icon" class="police-filing-icon" src="/assets/filing/beian_icon.png" alt="" aria-hidden="true">
+      <span>您的公安联网备案号</span>
+    </a>
   </footer>
 
   <section id="description-modal" class="modal" role="dialog" aria-modal="true"

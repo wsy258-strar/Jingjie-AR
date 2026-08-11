@@ -352,7 +352,17 @@ button:disabled { cursor: not-allowed; opacity: .5; }
 
 .filing-records a {
   color: inherit;
+  display: inline-flex;
+  align-items: center;
+  gap: .2rem;
   text-decoration: none;
+}
+
+.police-filing-icon {
+  flex: 0 0 auto;
+  width: .9rem;
+  height: 1rem;
+  object-fit: contain;
 }
 
 .filing-records a:hover,

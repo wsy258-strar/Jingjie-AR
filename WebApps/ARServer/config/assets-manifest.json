@@ -1,5 +1,10 @@
 [
   {
+    "path": "filing/beian_icon.png",
+    "size": 1403,
+    "sha256": "8dfecad0dfcb3dc584f2c2447943eefb1fd65a058856eb0611e2c56ddc4c1fe1"
+  },
+  {
     "path": "hotspot/new_spotd1_gif.png",
     "size": 19504,
     "sha256": "9339ab3c6b1bf901358cc206e2fdec76a383cacf68e426c361879c298a5cce48"
@@ -8,6 +13,11 @@
     "path": "hotspot/new_spotd9_gif.png",
     "size": 7926,
     "sha256": "34260477225e0d00988914892515d83fd792aefd71f83fd5f923f65f0b0b3a55"
+  },
+  {
+    "path": "krp/plugins/gyro2.js",
+    "size": 13684,
+    "sha256": "7547e22a439f02d99deee60501289c1c14ff46a4846b08074f679daa0c9c4e87"
   },
   {
     "path": "illustration/bohuo-ji0.jpg",
