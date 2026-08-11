@@ -108,20 +108,54 @@ export function buildSceneXml(
   scene,
   viewOverride = null,
   viewMode = VIEW_MODES.NORMAL,
+  reducedMotion = false,
   generation = -1
 ) {
   const view = viewFor(scene, viewOverride, viewMode);
   const sceneGeneration = finiteNumber(generation, -1);
   const hotspots = renderableHotspots(scene);
-  const hotspotXml = hotspots.map((hotspot, index) => [
+  const shouldReduceMotion = Boolean(reducedMotion);
+  const hotspotPulseActions = shouldReduceMotion ? "" : [
+    '<action name="scene_hotspot_pulse"><![CDATA[',
+    'if(hotspot[get(caller.name)], ',
+    'tween(caller.scale,1.14,0.75); ',
+    'tween(caller.alpha,0.65,0.75); ',
+    'tween(caller.oy,-12,0.75,default, ',
+    'if(hotspot[get(caller.name)], ',
+    'set(caller.scale,1); set(caller.alpha,1); set(caller.oy,0); scene_hotspot_pulse();',
+    ');',
+    ');',
+    ');',
+    ']]></action>',
+    '<action name="artwork_hotspot_pulse"><![CDATA[',
+    'if(hotspot[get(caller.name)], ',
+    'tween(caller.scale,1.12,1.1,default, tween(caller.scale,1,1.1)); ',
+    'tween(caller.alpha,1,1.1,default, ',
+    'tween(caller.alpha,0.85,1.1,default, ',
+    'if(hotspot[get(caller.name)], artwork_hotspot_pulse(););',
+    ');',
+    ');',
+    ']]></action>'
+  ].join("");
+  const hotspotXml = hotspots.map((hotspot, index) => {
+    const hotspotType = hotspot.type;
+    const animated = hotspotType === "scene" || hotspotType === "artwork";
+    const onloaded = !shouldReduceMotion && animated ?
+      ` onloaded="${hotspotType}_hotspot_pulse();"` : "";
+    const alpha = hotspotType === "artwork" ? ' alpha="0.85"' : "";
+    const onclick = animated ?
+      `stoptween(caller.scale); stoptween(caller.alpha); stoptween(caller.oy); js(JingjieARHotspotBridge(${index}));` :
+      `js(JingjieARHotspotBridge(${index}));`;
+    return [
     '<hotspot name="', xmlEscape(hotspot.hotspotId || `hotspot-${index}`),
     '" type="image" crop="0|0|128|128',
     '" title="', xmlEscape(hotspot.title),
     '" ath="', finiteNumber(hotspot.ath, 0),
     '" atv="', finiteNumber(hotspot.atv, 0),
     '" url="', xmlEscape(hotspot.iconUrl),
-    '" onclick="js(JingjieARHotspotBridge(', index, '));" />'
-  ].join("")).join("");
+    '"', alpha, onloaded, ' onclick="', onclick, '" />'
+    ].join("");
+  }).join("");
 
   return [
     '<krpano version="1.19">',
@@ -143,6 +177,7 @@ export function buildSceneXml(
     '<view hlookat="', view.hlookat, '" vlookat="', view.vlookat,
     '" fov="', view.fov, '" fovtype="MFOV" stereographic="', view.stereographic,
     '" fisheye="', view.fisheye, '" />',
+    hotspotPulseActions,
     hotspotXml,
     '</krpano>'
   ].join("");
@@ -378,7 +413,13 @@ export class KrpanoAdapter {
 
     const preservedView = this.loaded ? this.getView() : null;
     const nextHotspots = renderableHotspots(scene);
-    const xml = buildSceneXml(scene, preservedView, this.viewMode, requestedGeneration);
+    const xml = buildSceneXml(
+      scene,
+      preservedView,
+      this.viewMode,
+      this.reducedMotion,
+      requestedGeneration
+    );
     this.player.call(`loadxml('${krpanoActionString(xml)}', null, RESET);`);
     this.currentHotspots = nextHotspots;
     this.loaded = true;

@@ -61,7 +61,7 @@ test("XML 转义覆盖标签、引号、与号和单引号", () => {
 });
 
 test("场景 XML 包含低清预览、高清立方体和视角，且不渲染 inactive 热点", () => {
-  const xml = buildSceneXml(scene, null, VIEW_MODES.NORMAL, 12);
+  const xml = buildSceneXml(scene, null, VIEW_MODES.NORMAL, false, 12);
   assert.match(xml, /fullscreen_mirroring="true"/);
   assert.match(xml, /mobilevr_fake_support="true"/);
   assert.match(xml, /<plugin name="webvr" devices="html5" keep="true" url="\/assets\/krp\/plugins\/webvr\.js" mobilevr_support="true"/);
@@ -77,6 +77,59 @@ test("场景 XML 包含低清预览、高清立方体和视角，且不渲染 in
   assert.doesNotMatch(xml, /inactive-hotspot/);
   assert.match(xml, /onpreviewcomplete="js\(JingjieARSceneBridge\(0,12\)\);"/);
   assert.match(xml, /onloadcomplete="js\(JingjieARSceneBridge\(1,12\)\);"/);
+});
+
+test("场景与展品热点分别注册循环引导动效，并在点击前停止 caller 动画", () => {
+  const xml = buildSceneXml({
+    ...scene,
+    hotspots: [
+      scene.hotspots[0],
+      {
+        hotspotId: "artwork-hotspot",
+        type: "artwork",
+        title: "青花瓷",
+        ath: 6,
+        atv: -3,
+        iconUrl: "/assets/hotspot/artwork.png",
+        renderable: true
+      }
+    ]
+  });
+
+  assert.match(xml, /<action name="scene_hotspot_pulse">/);
+  assert.match(xml, /<action name="artwork_hotspot_pulse">/);
+  assert.match(xml, /hotspot\[get\(caller\.name\)\]/);
+  assert.match(xml, /tween\(caller\.scale,1\.14,0\.75/);
+  assert.match(xml, /tween\(caller\.alpha,0\.65,0\.75/);
+  assert.match(xml, /tween\(caller\.oy,-12,0\.75/);
+  assert.match(xml, /tween\(caller\.scale,1\.12,1\.1/);
+  assert.match(xml, /tween\(caller\.alpha,1,1\.1/);
+  assert.match(xml, /onloaded="scene_hotspot_pulse\(\);"/);
+  assert.match(xml, /onloaded="artwork_hotspot_pulse\(\);"/);
+  assert.match(xml, /onclick="stoptween\(caller\.scale\); stoptween\(caller\.alpha\); stoptween\(caller\.oy\); js\(JingjieARHotspotBridge\(0\)\);"/);
+  assert.match(xml, /onclick="stoptween\(caller\.scale\); stoptween\(caller\.alpha\); stoptween\(caller\.oy\); js\(JingjieARHotspotBridge\(1\)\);"/);
+});
+
+test("reduced motion 场景不输出热点循环，但保留可点击热点", () => {
+  const xml = buildSceneXml({
+    ...scene,
+    hotspots: [
+      scene.hotspots[0],
+      {
+        hotspotId: "artwork-hotspot",
+        type: "artwork",
+        title: "青花瓷",
+        ath: 6,
+        atv: -3,
+        iconUrl: "/assets/hotspot/artwork.png",
+        renderable: true
+      }
+    ]
+  }, null, VIEW_MODES.NORMAL, true);
+
+  assert.doesNotMatch(xml, /hotspot_pulse/);
+  assert.match(xml, /onclick="stoptween\(caller\.scale\); stoptween\(caller\.alpha\); stoptween\(caller\.oy\); js\(JingjieARHotspotBridge\(0\)\);"/);
+  assert.match(xml, /onclick="stoptween\(caller\.scale\); stoptween\(caller\.alpha\); stoptween\(caller\.oy\); js\(JingjieARHotspotBridge\(1\)\);"/);
 });
 
 test("场景 XML 注册 Gyro2 且默认由页面控制启用", () => {
