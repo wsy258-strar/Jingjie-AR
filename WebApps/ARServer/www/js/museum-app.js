@@ -10,6 +10,7 @@ import { ModalFocusManager } from "./modal-focus.js";
 import { MuseumUiState } from "./museum-ui-state.js";
 import { SceneDissolve } from "./scene-dissolve.js";
 import { FullscreenOrientation } from "./fullscreen-orientation.js";
+import { AudioControlState } from "./audio-control-state.js";
 
 const api = new ApiClient();
 let loginWaiter = null;
@@ -119,16 +120,6 @@ function renderUiState(state) {
   }
 }
 
-function setMusicButtonState(state) {
-  const button = element("music-toggle");
-  const playing = state === "playing";
-  const label = playing ? "暂停讲解" :
-    state === "unavailable" ? "当前场景暂无音乐" : "播放讲解";
-  button.classList.toggle("is-playing", playing);
-  button.setAttribute("aria-label", label);
-  button.title = label;
-}
-
 export function artworkIdFromLocation(locationObject) {
   try {
     const href = locationObject?.href;
@@ -141,7 +132,6 @@ export function artworkIdFromLocation(locationObject) {
 }
 
 const uiState = new MuseumUiState({ onChange: renderUiState });
-setMusicButtonState("unavailable");
 
 export class MuseumApp {
   constructor({ artworkModal: injectedArtworkModal = artworkModal, locationObject = window.location } = {}) {
@@ -154,6 +144,10 @@ export class MuseumApp {
     this.document = document;
     this.musicUrl = "";
     this.musicAutoplayRetry = null;
+    this.musicControl = new AudioControlState({
+      audio: element("scene-audio"),
+      button: element("music-toggle")
+    });
     this.gyroAutoEnableRequested = false;
     this.gyroGestureRequested = false;
     this.sceneDissolve = new SceneDissolve({
@@ -327,27 +321,23 @@ export class MuseumApp {
 
   configureMusic(music = {}) {
     const audio = element("scene-audio");
-    const button = element("music-toggle");
     const musicUrl = typeof music.url === "string" ? music.url : "";
     if (musicUrl && musicUrl === this.musicUrl && audio.src) {
       audio.volume = Math.max(0, Math.min(1, Number(music.volume) || 1));
       audio.loop = Boolean(music.loop);
-      button.disabled = false;
-      setMusicButtonState(audio.paused ? "paused" : "playing");
+      this.musicControl.sync();
       return;
     }
     this.clearMusicAutoplayRetry();
     audio.pause();
     audio.removeAttribute("src");
-    button.disabled = true;
-    setMusicButtonState("unavailable");
+    this.musicControl.setUnavailable();
     this.musicUrl = musicUrl;
     if (!musicUrl) return;
     audio.src = musicUrl;
     audio.volume = Math.max(0, Math.min(1, Number(music.volume) || 1));
     audio.loop = Boolean(music.loop);
-    button.disabled = false;
-    setMusicButtonState("paused");
+    this.musicControl.sync();
     if (music.autoplay) this.playMusic(audio, true);
   }
 
@@ -361,8 +351,9 @@ export class MuseumApp {
   playMusic(audio, retryAfterGesture) {
     return Promise.resolve().then(() => audio.play()).then(() => {
       this.clearMusicAutoplayRetry();
-      setMusicButtonState("playing");
+      this.musicControl.sync();
     }).catch(() => {
+      this.musicControl.sync();
       if (retryAfterGesture) this.armMusicAutoplayRetry(audio);
     });
   }
@@ -504,19 +495,15 @@ element("music-toggle").addEventListener("click", async () => {
     try {
       await audio.play();
       app.clearMusicAutoplayRetry();
-      setMusicButtonState("playing");
+      app.musicControl.sync();
     } catch (error) {
       if (error && error.name === "AbortError") return;
       notify("浏览器未允许播放音频，请再次尝试");
     }
   } else {
     audio.pause();
-    setMusicButtonState("paused");
+    app.musicControl.sync();
   }
-});
-
-element("scene-audio").addEventListener("ended", () => {
-  setMusicButtonState("paused");
 });
 
 const fullscreenOrientation = new FullscreenOrientation({
@@ -551,6 +538,7 @@ element("retry-bootstrap").addEventListener("click", () => app.bootstrap());
 window.addEventListener("pagehide", () => {
   if (app.sceneController) app.sceneController.abort();
   app.gyro.destroy();
+  app.musicControl.destroy();
 });
 
 if (auth.token()) element("login-open").textContent = "已登录 · 退出";

@@ -38,6 +38,11 @@ class FakeEventTarget {
     });
   }
 
+  removeEventListener(type, listener) {
+    if (!this.listeners.has(type)) return;
+    this.listeners.set(type, this.listeners.get(type).filter((entry) => entry.listener !== listener));
+  }
+
   async dispatch(type, init = {}) {
     const event = {
       ...init,
@@ -92,6 +97,7 @@ class FakeElement extends FakeEventTarget {
     this.disabled = false;
     this.hidden = false;
     this.paused = true;
+    this.ended = false;
     this.src = "";
     this.title = "";
     this.type = "";
@@ -313,7 +319,7 @@ async function createHarness({ reducedMotion = false, locationHref = "https://ex
   source = `const {
     ApiClient, ApiError, AuthSession, VisitorSession, KrpanoAdapter, ArtworkModal,
     MuseumLifecycle, ModalFocusManager, MuseumUiState, SceneDissolve, GyroController,
-    FullscreenOrientation
+    FullscreenOrientation, AudioControlState
   } = globalThis.__museumAppTestDeps;\n${source}`;
   source += `
 globalThis.__museumAppTestInstance = app;
@@ -329,6 +335,9 @@ globalThis.__museumVisitorSession = visitor;
     "../../WebApps/ARServer/www/js/modal-focus.js", import.meta.url
   ), "utf8"));
   const { ModalFocusManager } = await import(`${pathToFileURL(modalFocusPath).href}?case=${Math.random()}`);
+  const { AudioControlState } = await import(new URL(
+    "../../WebApps/ARServer/www/js/audio-control-state.js", import.meta.url
+  ));
 
   const document = new FakeDocument();
   const window = new FakeEventTarget();
@@ -528,7 +537,7 @@ globalThis.__museumVisitorSession = visitor;
   globalThis.__museumAppTestDeps = {
     ApiClient, ApiError, AuthSession, VisitorSession, KrpanoAdapter, ArtworkModal,
     MuseumLifecycle, ModalFocusManager, MuseumUiState: MuseumUiStateStub, SceneDissolve, GyroController,
-    FullscreenOrientation
+    FullscreenOrientation, AudioControlState
   };
 
   await import(`${pathToFileURL(modulePath).href}?case=${Date.now()}-${Math.random()}`);
@@ -841,6 +850,30 @@ test("音乐状态更新保留按钮中的 SVG 子节点", async () => {
 
     await button.dispatch("click");
     assert.equal(button.children[0], svg);
+    assert.equal(button.classList.contains("is-playing"), false);
+  } finally {
+    await harness.cleanup();
+  }
+});
+
+test("音乐按钮只由音频真实状态同步，不在 click 后猜测播放结果", async () => {
+  const harness = await createHarness();
+  try {
+    const button = harness.document.getElementById("music-toggle");
+    const audio = harness.document.getElementById("scene-audio");
+    harness.app.configureMusic({ url: "/audio/guide.mp3" });
+
+    audio.play = async () => {};
+    await button.dispatch("click");
+    assert.equal(button.classList.contains("is-playing"), false);
+    assert.equal(button.title, "播放讲解");
+
+    audio.paused = false;
+    await audio.dispatch("play");
+    assert.equal(button.classList.contains("is-playing"), true);
+
+    audio.paused = true;
+    await audio.dispatch("error");
     assert.equal(button.classList.contains("is-playing"), false);
   } finally {
     await harness.cleanup();

@@ -224,13 +224,20 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, [tabindex]:fo
   height: 23px;
 }
 
-.icon-button:hover,
 .icon-button.is-active,
 .icon-button.is-playing,
 .icon-button.is-fullscreen {
   color: var(--accent-strong);
   border-color: var(--accent);
   background: var(--glass-strong);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .icon-button:hover {
+    color: var(--accent-strong);
+    border-color: var(--accent);
+    background: var(--glass-strong);
+  }
 }
 
 button:disabled { cursor: not-allowed; opacity: .5; }
