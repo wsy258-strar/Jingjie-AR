@@ -391,12 +391,16 @@ globalThis.__museumVisitorSession = visitor;
     constructor(options) {
       this.options = options;
       this.viewMode = "normal";
+      this.gyroAvailable = false;
       this.gyroEnableCalls = 0;
       this.gyroDisableCalls = 0;
       globalThis.__museumAppAdapter = this;
     }
     invalidate() {}
-    async loadScene() { return true; }
+    async loadScene() {
+      this.gyroAvailable = true;
+      return true;
+    }
     setViewMode(mode) {
       if (this.viewModeError) throw this.viewModeError;
       this.viewMode = mode;
@@ -410,7 +414,7 @@ globalThis.__museumVisitorSession = visitor;
       if (this.vrError) throw this.vrError;
       return Promise.resolve(true);
     }
-    isGyroAvailable() { return true; }
+    isGyroAvailable() { return this.gyroAvailable; }
     enableGyro() { this.gyroEnableCalls += 1; }
     disableGyro() { this.gyroDisableCalls += 1; }
   }
@@ -430,6 +434,7 @@ globalThis.__museumVisitorSession = visitor;
     }
     requestFromGesture() {
       this.requestFromGestureCalls += 1;
+      if (!this.adapter.isGyroAvailable()) return false;
       if (!this.enabled && !this.suspensions.size) {
         this.adapter.enableGyro();
         this.enabled = true;
@@ -597,17 +602,22 @@ test("krpano 子节点阻止冒泡时 panorama capture 仍关闭浮层且保持 
   }
 });
 
-test("播放器初始化后自动启用，且仅首次全景 pointerdown 请求陀螺仪权限", async () => {
+test("播放器真正就绪后自动启用一次，且初始化前点击不消耗后续手势权限申请", async () => {
   const harness = await createHarness();
   try {
-    assert.equal(harness.app.gyro.autoEnableCalls, 1);
-    await harness.document.dispatch("pointerdown");
-    assert.equal(harness.app.gyro.requestFromGestureCalls, 0);
-
     const panorama = harness.document.getElementById("panorama");
     await panorama.dispatch("pointerdown");
-    await panorama.dispatch("pointerdown");
+    assert.equal(harness.adapter.isGyroAvailable(), false);
+    assert.equal(harness.app.gyro.autoEnableCalls, 0);
     assert.equal(harness.app.gyro.requestFromGestureCalls, 1);
+    assert.equal(harness.adapter.gyroEnableCalls, 0);
+
+    await harness.app.switchScene("scene-a");
+    assert.equal(harness.adapter.isGyroAvailable(), true);
+    assert.equal(harness.app.gyro.autoEnableCalls, 1);
+
+    await panorama.dispatch("pointerdown");
+    assert.equal(harness.app.gyro.requestFromGestureCalls, 2);
     assert.equal(harness.adapter.gyroEnableCalls, 1);
   } finally {
     await harness.cleanup();
@@ -620,6 +630,7 @@ test("抽屉和视角浮层以 transient-ui 原因暂停，关闭后恢复陀螺
     const drawerToggle = harness.document.getElementById("scene-drawer-toggle");
     const viewToggle = harness.document.getElementById("view-toggle");
     const panorama = harness.document.getElementById("panorama");
+    await harness.app.switchScene("scene-a");
     await panorama.dispatch("pointerdown");
     assert.equal(harness.adapter.gyroEnableCalls, 1);
 
@@ -644,6 +655,7 @@ test("作品、登录和简介模态框以 modal 原因暂停，关闭后恢复�
   const harness = await createHarness();
   try {
     const panorama = harness.document.getElementById("panorama");
+    await harness.app.switchScene("scene-a");
     await panorama.dispatch("pointerdown");
 
     harness.app.handleHotspot({ type: "artwork", artworkId: "artwork-1" });

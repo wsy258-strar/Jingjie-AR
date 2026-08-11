@@ -14,7 +14,6 @@ const api = new ApiClient();
 let loginWaiter = null;
 let noticeTimer = null;
 let gyroController = null;
-let gyroGestureRequested = false;
 let transientUiSuspended = false;
 
 function element(id) {
@@ -146,6 +145,8 @@ export class MuseumApp {
     this.document = document;
     this.musicUrl = "";
     this.musicAutoplayRetry = null;
+    this.gyroAutoEnableRequested = false;
+    this.gyroGestureRequested = false;
     this.sceneDissolve = new SceneDissolve({
       viewer: element("panorama"),
       overlay: element("scene-dissolve")
@@ -165,7 +166,23 @@ export class MuseumApp {
       onDenied: () => notify("未能启用陀螺仪，仍可拖动浏览")
     });
     gyroController = this.gyro;
+  }
+
+  autoEnableGyroAfterSceneLoad() {
+    if (this.gyroAutoEnableRequested) return;
+    this.gyroAutoEnableRequested = true;
     Promise.resolve(this.gyro.autoEnable()).catch(() => {});
+  }
+
+  async requestGyroFromGesture() {
+    if (this.gyroGestureRequested) return false;
+    try {
+      const enabled = await this.gyro.requestFromGesture();
+      if (enabled) this.gyroGestureRequested = true;
+      return enabled;
+    } catch (_) {
+      return false;
+    }
   }
 
   async bootstrap() {
@@ -242,6 +259,7 @@ export class MuseumApp {
         this.sceneDissolve.cancel(generation);
         return false;
       }
+      this.autoEnableGyroAfterSceneLoad();
       this.currentScene = scene;
       this.markCurrentScene(scene.sceneId);
       this.configureMusic(scene.music);
@@ -408,10 +426,7 @@ document.querySelectorAll("[data-view-mode]").forEach((button) => {
 for (const type of ["pointerdown", "wheel"]) {
   element("panorama").addEventListener(type, () => {
     uiState.closeTransientLayers();
-    if (type === "pointerdown" && !gyroGestureRequested) {
-      gyroGestureRequested = true;
-      Promise.resolve(gyroController?.requestFromGesture()).catch(() => {});
-    }
+    if (type === "pointerdown") return app.requestGyroFromGesture();
   }, {
     capture: true,
     passive: true
