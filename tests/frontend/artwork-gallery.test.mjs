@@ -84,6 +84,20 @@ function timerHarness() {
   };
 }
 
+function mediaQueryHarness(initialMatches = true) {
+  const listeners = new Set();
+  return {
+    matches: initialMatches,
+    addEventListener(type, listener) {
+      if (type === "change") listeners.add(listener);
+    },
+    setMatches(matches) {
+      this.matches = matches;
+      for (const listener of listeners) listener({ type: "change", matches });
+    }
+  };
+}
+
 function createGallery(overrides = {}) {
   const clock = overrides.clock || timerHarness();
   return new ArtworkGallery({
@@ -131,6 +145,20 @@ function immersivePointer(gallery, type, clientX, clientY, pointerId = 1, target
 function immersiveTap(gallery, clientX, clientY, pointerId = 1) {
   immersivePointer(gallery, "pointerdown", clientX, clientY, pointerId);
   immersivePointer(gallery, "pointerup", clientX, clientY, pointerId);
+}
+
+function immersiveBackgroundTap(gallery, target, clientX, clientY, pointerId = 1) {
+  const eventTarget = target === "root" ? gallery.immersiveRoot : gallery.immersiveStage;
+  const eventHost = target === "root" ? gallery.immersiveRoot : gallery.immersiveStage;
+  eventHost.dispatchEvent({
+    ...pointer(clientX, clientY, pointerId), type: "pointerdown", target: eventTarget
+  });
+  eventHost.dispatchEvent({
+    ...pointer(clientX, clientY, pointerId), type: "pointerup", target: eventTarget
+  });
+  gallery.immersiveRoot.dispatchEvent({
+    type: "click", target: eventTarget, clientX, clientY, detail: 1
+  });
 }
 
 test("缩放限制在 1 至 3 且重置恢复初始状态", () => {
@@ -291,6 +319,43 @@ test("跨越移动端断点或清空图片会刷新普通图片入口语义", ()
   } finally {
     globalThis.ResizeObserver = originalResizeObserver;
   }
+});
+
+test("顶层打开后跨出移动端断点会立即退出并清理交互状态", () => {
+  const clock = timerHarness();
+  const mobileMediaQuery = mediaQueryHarness(true);
+  let hideCount = 0;
+  let gallery;
+  gallery = createGallery({
+    clock,
+    mobileMediaQuery,
+    isMobile: () => mobileMediaQuery.matches,
+    hideImmersiveLayer: () => {
+      assert.equal(gallery.image.getAttribute("tabindex"), "0");
+      hideCount += 1;
+    }
+  });
+  gallery.setImages(["/a.jpg"], "作品");
+  gallery.scrollContainer.scrollTop = 126;
+  gallery.openImmersive();
+  gallery.scrollContainer.scrollTop = 0;
+  gallery.immersiveScale = 3;
+  immersiveTap(gallery, 100, 100);
+  immersivePointer(gallery, "pointerdown", 40, 50, 7);
+
+  mobileMediaQuery.setMatches(false);
+
+  assert.equal(gallery.isImmersive(), false);
+  assert.equal(gallery.immersiveRoot.getAttribute("aria-hidden"), "true");
+  assert.deepEqual(
+    [gallery.immersiveScale, gallery.immersiveOffsetX, gallery.immersiveOffsetY],
+    [1, 0, 0]
+  );
+  assert.equal(gallery.pointers.size, 0);
+  assert.equal(clock.pending, 0);
+  assert.equal(gallery.scrollContainer.scrollTop, 126);
+  assert.equal(gallery.image.getAttribute("role"), null);
+  assert.equal(hideCount, 1);
 });
 
 test("移动端点击普通图片进入最高层并显示当前图片", () => {
@@ -520,14 +585,37 @@ test("关闭顶层查看器清理缩放、偏移、指针与待执行单击", ()
   assert.equal(clock.pending, 0);
 });
 
-test("顶层原始比例点击背景或关闭按钮立即退出", () => {
-  const gallery = createGallery();
+test("顶层舞台背景单击让出双击窗口且第二击放大", () => {
+  const clock = timerHarness();
+  const gallery = createGallery({ clock });
   gallery.setImages(["/a.jpg"], "作品");
   gallery.openImmersive();
-  gallery.immersiveRoot.dispatchEvent({ type: "click", target: gallery.immersiveRoot });
-  assert.equal(gallery.isImmersive(), false);
 
+  immersiveBackgroundTap(gallery, "stage", 100, 100);
+  clock.advance(279);
+  assert.equal(gallery.isImmersive(), true);
+
+  immersiveBackgroundTap(gallery, "stage", 112, 108);
+  assert.equal(gallery.immersiveScale, 2);
+  assert.equal(gallery.isImmersive(), true);
+  assert.equal(clock.pending, 0);
+});
+
+test("顶层根背景单击让出双击窗口且关闭按钮仍立即退出", () => {
+  const clock = timerHarness();
+  const gallery = createGallery({ clock });
+  gallery.setImages(["/a.jpg"], "作品");
   gallery.openImmersive();
+
+  immersiveBackgroundTap(gallery, "root", 80, 60);
+  clock.advance(279);
+  assert.equal(gallery.isImmersive(), true);
+
+  immersiveBackgroundTap(gallery, "root", 86, 66);
+  assert.equal(gallery.immersiveScale, 2);
+  assert.equal(gallery.isImmersive(), true);
+
   gallery.immersiveCloseButton.dispatchEvent({ type: "click", target: gallery.immersiveCloseButton });
   assert.equal(gallery.isImmersive(), false);
+  assert.equal(clock.pending, 0);
 });

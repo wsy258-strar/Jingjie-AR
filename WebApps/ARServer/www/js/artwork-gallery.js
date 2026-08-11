@@ -38,8 +38,9 @@ export class ArtworkGallery {
     this.now = elements.now || (() => Date.now());
     this.setTimer = elements.setTimeout || ((callback, delay) => globalThis.setTimeout(callback, delay));
     this.clearTimer = elements.clearTimeout || ((timer) => globalThis.clearTimeout(timer));
-    this.mobileCheck = elements.isMobile || (() =>
-      Boolean(globalThis.matchMedia?.("(max-width: 820px)").matches));
+    this.mobileMediaQuery = elements.mobileMediaQuery ||
+      globalThis.matchMedia?.("(max-width: 820px)") || null;
+    this.mobileCheck = elements.isMobile || (() => Boolean(this.mobileMediaQuery?.matches));
     this.bindEvents();
   }
 
@@ -120,16 +121,27 @@ export class ArtworkGallery {
       this.handleImmersivePointerCancel(event));
     this.immersiveStage?.addEventListener("lostpointercapture", (event) =>
       this.handleImmersivePointerCancel(event));
+    this.immersiveRoot?.addEventListener("pointerdown", (event) => {
+      if (event.target === this.immersiveRoot) this.handleImmersivePointerDown(event);
+    });
+    this.immersiveRoot?.addEventListener("pointermove", (event) => {
+      if (event.target === this.immersiveRoot) this.handleImmersivePointerMove(event);
+    });
+    this.immersiveRoot?.addEventListener("pointerup", (event) => {
+      if (event.target === this.immersiveRoot) this.handleImmersivePointerUp(event);
+    });
+    this.immersiveRoot?.addEventListener("pointercancel", (event) => {
+      if (event.target === this.immersiveRoot) this.handleImmersivePointerCancel(event);
+    });
     this.immersiveImage?.addEventListener("dragstart", (event) => event.preventDefault());
     this.immersiveCloseButton?.addEventListener("click", () => this.closeImmersive());
-    this.immersiveRoot?.addEventListener("click", (event) => {
-      if (this.immersiveScale === 1 &&
-        (event.target === this.immersiveRoot || event.target === this.immersiveStage))
-        this.closeImmersive();
-    });
+    const handleMobileChange = () => this.handleMobileChange();
+    if (this.mobileMediaQuery?.addEventListener)
+      this.mobileMediaQuery.addEventListener("change", handleMobileChange);
+    else this.mobileMediaQuery?.addListener?.(handleMobileChange);
     if (this.stage && typeof globalThis.ResizeObserver === "function") {
       this.resizeObserver = new globalThis.ResizeObserver(() => {
-        this.updateImageOpenerAccessibility();
+        this.handleMobileChange();
         this.constrainOffsets();
         this.renderTransform();
         if (this.isImmersive()) {
@@ -140,6 +152,11 @@ export class ArtworkGallery {
       this.resizeObserver.observe(this.stage);
       if (this.immersiveStage) this.resizeObserver.observe(this.immersiveStage);
     }
+  }
+
+  handleMobileChange() {
+    if (this.isImmersive() && !this.mobileCheck()) this.closeImmersive();
+    this.updateImageOpenerAccessibility();
   }
 
   render() {
