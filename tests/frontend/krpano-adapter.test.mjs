@@ -89,7 +89,7 @@ test("Gyro2 适配器调用插件并读取可用性", () => {
   const adapter = new KrpanoAdapter({ targetId: "panorama" });
   adapter.player = {
     get(key) {
-      assert.equal(key, "plugin[gyro].available");
+      assert.equal(key, "plugin[gyro].isavailable");
       return true;
     },
     call(command) { calls.push(command); }

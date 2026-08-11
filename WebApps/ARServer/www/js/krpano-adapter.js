@@ -255,7 +255,7 @@ export class KrpanoAdapter {
 
   isGyroAvailable() {
     if (!this.player || typeof this.player.get !== "function") return false;
-    const available = this.player.get("plugin[gyro].available");
+    const available = this.player.get("plugin[gyro].isavailable");
     return available === true || available === 1 || available === "1" || available === "true";
   }
 
