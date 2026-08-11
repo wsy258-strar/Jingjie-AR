@@ -100,10 +100,13 @@ test("音频事件只在真实播放时显示播放状态", () => {
   audio.ended = false;
   audio.paused = false;
   audio.dispatch("play");
-  audio.paused = true;
+  audio.error = new Error("音频加载失败");
   audio.dispatch("error");
   assert.equal(button.classList.contains("is-playing"), false);
+  assert.equal(button.disabled, false);
+  assert.equal(button.title, "播放讲解");
 
+  audio.error = null;
   audio.paused = false;
   audio.dispatch("play");
   audio.paused = true;

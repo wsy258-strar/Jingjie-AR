@@ -4,8 +4,10 @@ export class AudioControlState {
     this.audio = audio;
     this.button = button;
     this.sync = this.sync.bind(this);
-    this.events = ["play", "pause", "ended", "error", "emptied"];
+    this.setPlaybackFailed = this.setPlaybackFailed.bind(this);
+    this.events = ["play", "pause", "ended", "emptied"];
     this.events.forEach((type) => audio.addEventListener(type, this.sync));
+    audio.addEventListener("error", this.setPlaybackFailed);
     this.sync();
   }
 
@@ -27,7 +29,17 @@ export class AudioControlState {
     this.button.title = "当前场景暂无音乐";
   }
 
+  setPlaybackFailed() {
+    const hasSource = Boolean(this.audio.src);
+    const label = hasSource ? "播放讲解" : "当前场景暂无音乐";
+    this.button.disabled = !hasSource;
+    this.button.classList.toggle("is-playing", false);
+    this.button.setAttribute("aria-label", label);
+    this.button.title = label;
+  }
+
   destroy() {
     this.events.forEach((type) => this.audio.removeEventListener(type, this.sync));
+    this.audio.removeEventListener("error", this.setPlaybackFailed);
   }
 }
