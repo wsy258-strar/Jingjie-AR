@@ -113,6 +113,9 @@ export function buildSceneXml(scene, viewOverride = null, viewMode = VIEW_MODES.
     ' onunavailable="js(JingjieARWebVrBridge(0));"',
     ' onentervr="js(JingjieARWebVrBridge(2));"',
     ' onexitvr="js(JingjieARWebVrBridge(3));" />',
+    '<plugin name="gyro" devices="html5" keep="true"',
+    ' url="/assets/krp/plugins/gyro2.js" enabled="false"',
+    ' camroll="true" friction="0.5" />',
     '<preview url="', xmlEscape(scene.previewUrl), '" />',
     '<image><cube url="', xmlEscape(scene.cubeUrl), '" /></image>',
     '<view hlookat="', view.hlookat, '" vlookat="', view.vlookat,
@@ -236,6 +239,24 @@ export class KrpanoAdapter {
   isVrAvailable() {
     return this.vrState === "available" || this.vrState === "entering" ||
       this.vrState === "entered";
+  }
+
+  enableGyro() {
+    if (!this.player || typeof this.player.call !== "function") return false;
+    this.player.call("gyro.enable();");
+    return true;
+  }
+
+  disableGyro() {
+    if (!this.player || typeof this.player.call !== "function") return false;
+    this.player.call("gyro.disable();");
+    return true;
+  }
+
+  isGyroAvailable() {
+    if (!this.player || typeof this.player.get !== "function") return false;
+    const available = this.player.get("plugin[gyro].available");
+    return available === true || available === 1 || available === "1" || available === "true";
   }
 
   enterVr() {

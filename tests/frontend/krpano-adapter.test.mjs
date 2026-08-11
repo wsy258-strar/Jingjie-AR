@@ -77,6 +77,30 @@ test("场景 XML 包含低清预览、高清立方体和视角，且不渲染 in
   assert.doesNotMatch(xml, /inactive-hotspot/);
 });
 
+test("场景 XML 注册 Gyro2 且默认由页面控制启用", () => {
+  const xml = buildSceneXml(scene);
+  assert.match(xml, /<plugin name="gyro" devices="html5" keep="true"/);
+  assert.match(xml, /url="\/assets\/krp\/plugins\/gyro2\.js"/);
+  assert.match(xml, /enabled="false"/);
+});
+
+test("Gyro2 适配器调用插件并读取可用性", () => {
+  const calls = [];
+  const adapter = new KrpanoAdapter({ targetId: "panorama" });
+  adapter.player = {
+    get(key) {
+      assert.equal(key, "plugin[gyro].available");
+      return true;
+    },
+    call(command) { calls.push(command); }
+  };
+
+  adapter.enableGyro();
+  adapter.disableGyro();
+  assert.deepEqual(calls, ["gyro.enable();", "gyro.disable();"]);
+  assert.equal(adapter.isGyroAvailable(), true);
+});
+
 test("场景 XML 将 WebVR 可用性和进出事件桥接到适配层", () => {
   const xml = buildSceneXml(scene);
   assert.match(xml, /onavailable="js\(JingjieARWebVrBridge\(1\)\);"/);
