@@ -342,6 +342,8 @@ grep -Fq 'aria-controls="scene-drawer"' "$index"
 grep -Fq 'aria-expanded="false"' "$index"
 grep -Fq 'id="scene-drawer"' "$index"
 grep -Fq 'id="fullscreen-toggle"' "$index"
+grep -Fq 'id="landscape-hint" class="landscape-hint" role="status" hidden' "$index"
+grep -Fq '请旋转手机横屏浏览' "$index"
 grep -Fq 'id="music-toggle"' "$index"
 grep -Fq 'id="vr-toggle"' "$index"
 grep -Fq 'id="view-toggle"' "$index"
@@ -389,7 +391,7 @@ class ParentAudit(HTMLParser):
 
 audit = ParentAudit()
 audit.feed(Path(sys.argv[1]).read_text(encoding="utf-8"))
-for child in ("museum-shell", "description-modal", "artwork-modal", "artwork-image-viewer", "login-modal", "notice", "fatal-error"):
+for child in ("museum-shell", "description-modal", "artwork-modal", "artwork-image-viewer", "login-modal", "landscape-hint", "notice", "fatal-error"):
     assert audit.parents.get(child) == "museum-fullscreen-root", (child, audit.parents.get(child))
 PY
 
@@ -413,6 +415,8 @@ grep -Fq 'scene-drawer-toggle' "$app"
 grep -Fq 'view-toggle' "$app"
 grep -Fq 'data-view-mode' "$app"
 grep -Fq 'fullscreenchange' "$app"
+grep -Fq 'FullscreenOrientation' "$app"
+grep -Fq 'landscape-hint' "$app"
 grep -Fq 'element("museum-fullscreen-root")' "$app"
 grep -Fq 'adapter.setViewMode' "$app"
 grep -Fq 'adapter.enterVr' "$app"
@@ -428,6 +432,7 @@ grep -Fq 'height: 100dvh' "$css"
 grep -Fq '.floating-header' "$css"
 grep -Fq 'backdrop-filter: blur(' "$css"
 grep -Fq '.viewer-toolbar' "$css"
+grep -Fq '.landscape-hint' "$css"
 grep -Fq '.scene-drawer' "$css"
 grep -Fq '.scene-drawer.is-open' "$css"
 grep -Fq '.filing-records' "$css"

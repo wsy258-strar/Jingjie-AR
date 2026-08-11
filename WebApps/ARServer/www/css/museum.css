@@ -810,6 +810,23 @@ textarea { resize: vertical; }
 
 .login-card { width: min(430px, 100%); }
 
+.landscape-hint {
+  position: fixed;
+  z-index: 51;
+  bottom: 4.5rem;
+  left: 50%;
+  transform: translateX(-50%);
+  width: fit-content;
+  max-width: calc(100% - 2rem);
+  padding: .65rem .9rem;
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  color: var(--ink);
+  background: var(--glass-strong);
+  text-align: center;
+  box-shadow: 0 10px 35px rgba(0, 0, 0, .35);
+}
+
 .notice {
   position: fixed;
   z-index: 50;

@@ -176,6 +176,7 @@ class FakeElement extends FakeEventTarget {
 
 const ELEMENT_IDS = [
   "artwork-modal", "description-modal", "description-open", "fatal-error", "fullscreen-toggle",
+  "landscape-hint",
   "login-form", "login-message", "login-modal", "login-open", "login-password",
   "login-submit", "login-username", "museum-description", "museum-fullscreen-root", "museum-shell",
   "museum-title", "music-toggle", "notice", "online-count", "panorama",
@@ -195,7 +196,7 @@ class FakeDocument extends FakeEventTarget {
     this.elements.forEach((element) => {
       if (element !== fullscreenRoot && element !== shell) element.parentNode = shell;
     });
-    for (const id of ["description-modal", "artwork-modal", "login-modal", "notice", "fatal-error"])
+    for (const id of ["description-modal", "artwork-modal", "login-modal", "notice", "fatal-error", "landscape-hint"])
       this.getElementById(id).parentNode = fullscreenRoot;
     this.fullscreenElement = null;
     this.requestedFullscreen = null;
@@ -213,6 +214,7 @@ class FakeDocument extends FakeEventTarget {
     this.getElementById("scene-drawer").hidden = true;
     this.getElementById("view-panel").hidden = true;
     this.getElementById("notice").hidden = true;
+    this.getElementById("landscape-hint").hidden = true;
     for (const id of ["description-modal", "artwork-modal", "login-modal"])
       this.getElementById(id).setAttribute("aria-hidden", "true");
     this.getElementById("scene-drawer-toggle").setAttribute("aria-expanded", "false");
@@ -310,7 +312,8 @@ async function createHarness({ reducedMotion = false, locationHref = "https://ex
   source = source.replace(/^import .*;\n/gm, "");
   source = `const {
     ApiClient, ApiError, AuthSession, VisitorSession, KrpanoAdapter, ArtworkModal,
-    MuseumLifecycle, ModalFocusManager, MuseumUiState, SceneDissolve, GyroController
+    MuseumLifecycle, ModalFocusManager, MuseumUiState, SceneDissolve, GyroController,
+    FullscreenOrientation
   } = globalThis.__museumAppTestDeps;\n${source}`;
   source += `
 globalThis.__museumAppTestInstance = app;
@@ -329,8 +332,14 @@ globalThis.__museumVisitorSession = visitor;
 
   const document = new FakeDocument();
   const window = new FakeEventTarget();
-  window.setTimeout = () => 1;
-  window.clearTimeout = () => {};
+  const timers = [];
+  window.setTimeout = (callback, delay) => {
+    timers.push({ callback, delay, cleared: false });
+    return timers.length;
+  };
+  window.clearTimeout = (id) => {
+    if (timers[id - 1]) timers[id - 1].cleared = true;
+  };
   window.matchMediaQueries = [];
   window.matchMedia = (query) => {
     window.matchMediaQueries.push(query);
@@ -474,6 +483,25 @@ globalThis.__museumVisitorSession = visitor;
       this.enabled = false;
     }
   }
+  class FullscreenOrientation {
+    constructor(options) {
+      this.options = options;
+      this.toggleTargets = [];
+      this.changeTargets = [];
+      globalThis.__museumFullscreenOrientations.push(this);
+    }
+
+    async toggle(target) {
+      this.toggleTargets.push(target);
+      this.options.onLandscapeFallback();
+      return true;
+    }
+
+    handleFullscreenChange(target) {
+      this.changeTargets.push(target);
+      return document.fullscreenElement === target;
+    }
+  }
   class ArtworkModal {
     constructor({ modalManager } = {}) {
       this.modalManager = modalManager;
@@ -491,13 +519,16 @@ globalThis.__museumVisitorSession = visitor;
     app: globalThis.__museumAppTestInstance,
     appClass: globalThis.__museumAppTestClass,
     artworkIdFromLocation: globalThis.__museumArtworkIdFromLocation,
-    visitor: globalThis.__museumVisitorSession
+    visitor: globalThis.__museumVisitorSession,
+    fullscreenOrientations: globalThis.__museumFullscreenOrientations
   };
+  globalThis.__museumFullscreenOrientations = [];
   globalThis.document = document;
   globalThis.window = window;
   globalThis.__museumAppTestDeps = {
     ApiClient, ApiError, AuthSession, VisitorSession, KrpanoAdapter, ArtworkModal,
-    MuseumLifecycle, ModalFocusManager, MuseumUiState: MuseumUiStateStub, SceneDissolve, GyroController
+    MuseumLifecycle, ModalFocusManager, MuseumUiState: MuseumUiStateStub, SceneDissolve, GyroController,
+    FullscreenOrientation
   };
 
   await import(`${pathToFileURL(modulePath).href}?case=${Date.now()}-${Math.random()}`);
@@ -507,6 +538,7 @@ globalThis.__museumVisitorSession = visitor;
   const MuseumApp = globalThis.__museumAppTestClass;
   const artworkIdFromLocation = globalThis.__museumArtworkIdFromLocation;
   const visitor = globalThis.__museumVisitorSession;
+  const fullscreenOrientations = globalThis.__museumFullscreenOrientations;
 
   return {
     app,
@@ -516,6 +548,8 @@ globalThis.__museumVisitorSession = visitor;
     adapter,
     dissolve,
     document,
+    fullscreenOrientations,
+    timers,
     window,
     resolveCatalog(catalog = defaultCatalog) { resolveCatalog(catalog); },
     failCatalog(error = new Error("展馆目录加载失败")) { rejectCatalog(error); },
@@ -529,6 +563,7 @@ globalThis.__museumVisitorSession = visitor;
       globalThis.__museumAppTestClass = previous.appClass;
       globalThis.__museumArtworkIdFromLocation = previous.artworkIdFromLocation;
       globalThis.__museumVisitorSession = previous.visitor;
+      globalThis.__museumFullscreenOrientations = previous.fullscreenOrientations;
       await rm(directory, { recursive: true, force: true });
     }
   };
@@ -819,14 +854,16 @@ test("共同全屏根包含业务层，打开 modal 只 inert shell 且 modal �
     const shell = harness.document.getElementById("museum-shell");
     const button = harness.document.getElementById("fullscreen-toggle");
     const modal = harness.document.getElementById("description-modal");
-    for (const id of ["description-modal", "artwork-modal", "login-modal", "notice", "fatal-error"])
+    const [orientation] = harness.fullscreenOrientations;
+    for (const id of ["description-modal", "artwork-modal", "login-modal", "notice", "fatal-error", "landscape-hint"])
       assert.equal(root.contains(harness.document.getElementById(id)), true, `${id} 应在全屏根内`);
 
     await button.dispatch("click");
-    assert.equal(harness.document.requestedFullscreen, root);
+    assert.deepEqual(orientation.toggleTargets, [root]);
 
     harness.document.fullscreenElement = root;
     await harness.document.dispatch("fullscreenchange");
+    assert.deepEqual(orientation.changeTargets, [root]);
     assert.equal(button.classList.contains("is-fullscreen"), true);
     assert.equal(button.getAttribute("aria-label"), "退出全屏");
 
@@ -841,6 +878,24 @@ test("共同全屏根包含业务层，打开 modal 只 inert shell 且 modal �
     await harness.document.dispatch("fullscreenchange");
     assert.equal(button.classList.contains("is-fullscreen"), false);
     assert.equal(button.getAttribute("aria-label"), "全屏浏览");
+  } finally {
+    await harness.cleanup();
+  }
+});
+
+test("横屏锁定降级会显示提示并在 2.5 秒后隐藏", async () => {
+  const harness = await createHarness();
+  try {
+    const hint = harness.document.getElementById("landscape-hint");
+    const button = harness.document.getElementById("fullscreen-toggle");
+
+    await button.dispatch("click");
+
+    assert.equal(hint.hidden, false);
+    const hintTimer = harness.timers.at(-1);
+    assert.equal(hintTimer.delay, 2500);
+    hintTimer.callback();
+    assert.equal(hint.hidden, true);
   } finally {
     await harness.cleanup();
   }

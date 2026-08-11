@@ -9,10 +9,12 @@ import { MuseumLifecycle } from "./museum-lifecycle.js";
 import { ModalFocusManager } from "./modal-focus.js";
 import { MuseumUiState } from "./museum-ui-state.js";
 import { SceneDissolve } from "./scene-dissolve.js";
+import { FullscreenOrientation } from "./fullscreen-orientation.js";
 
 const api = new ApiClient();
 let loginWaiter = null;
 let noticeTimer = null;
+let landscapeHintTimer = null;
 let gyroController = null;
 let transientUiSuspended = false;
 
@@ -26,6 +28,13 @@ function notify(message) {
   notice.hidden = false;
   window.clearTimeout(noticeTimer);
   noticeTimer = window.setTimeout(() => { notice.hidden = true; }, 4500);
+}
+
+function showLandscapeHint() {
+  const hint = element("landscape-hint");
+  hint.hidden = false;
+  window.clearTimeout(landscapeHintTimer);
+  landscapeHintTimer = window.setTimeout(() => { hint.hidden = true; }, 2500);
 }
 
 function suspendGyroForModal() {
@@ -510,18 +519,19 @@ element("scene-audio").addEventListener("ended", () => {
   setMusicButtonState("paused");
 });
 
+const fullscreenOrientation = new FullscreenOrientation({
+  documentObject: document,
+  screenObject: globalThis.screen,
+  onLandscapeFallback: showLandscapeHint
+});
+
 element("fullscreen-toggle").addEventListener("click", async () => {
   const target = element("museum-fullscreen-root");
-  try {
-    if (!document.fullscreenElement) await target.requestFullscreen();
-    else await document.exitFullscreen();
-  } catch (_) {
-    notify("当前浏览器无法进入全屏模式");
-  }
+  if (!await fullscreenOrientation.toggle(target)) notify("当前浏览器无法进入全屏模式");
 });
 
 document.addEventListener("fullscreenchange", () => {
-  const active = document.fullscreenElement === element("museum-fullscreen-root");
+  const active = fullscreenOrientation.handleFullscreenChange(element("museum-fullscreen-root"));
   const button = element("fullscreen-toggle");
   button.classList.toggle("is-fullscreen", active);
   button.setAttribute("aria-label", active ? "退出全屏" : "全屏浏览");
