@@ -1,5 +1,9 @@
 const MIN_SCALE = 1;
 const MAX_SCALE = 3;
+const IMMERSIVE_MAX_SCALE = 4;
+const DOUBLE_TAP_DELAY = 280;
+const DOUBLE_TAP_DISTANCE = 24;
+const SWIPE_DISTANCE = 50;
 const ZOOM_FACTOR = 1.2;
 const INTERACTIVE_SELECTOR = "button, input, textarea, select, a";
 
@@ -22,6 +26,20 @@ export class ArtworkGallery {
     this.offsetX = 0;
     this.offsetY = 0;
     this.pointer = null;
+    this.immersiveScale = 1;
+    this.immersiveOffsetX = 0;
+    this.immersiveOffsetY = 0;
+    this.pointers = new Map();
+    this.singleTapTimer = null;
+    this.lastTap = null;
+    this.pinchStartDistance = 0;
+    this.pinchStartScale = 1;
+    this.savedScrollTop = 0;
+    this.now = elements.now || (() => Date.now());
+    this.setTimer = elements.setTimeout || ((callback, delay) => globalThis.setTimeout(callback, delay));
+    this.clearTimer = elements.clearTimeout || ((timer) => globalThis.clearTimeout(timer));
+    this.mobileCheck = elements.isMobile || (() =>
+      Boolean(globalThis.matchMedia?.("(max-width: 820px)").matches));
     this.bindEvents();
   }
 
@@ -42,6 +60,7 @@ export class ArtworkGallery {
     if (index < 0 || index >= this.images.length || index === this.currentIndex) return false;
     this.currentIndex = index;
     this.resetView();
+    this.resetImmersiveView();
     this.render();
     return true;
   }
@@ -81,13 +100,45 @@ export class ArtworkGallery {
     this.stage?.addEventListener("pointercancel", (event) => this.handlePointerCancel(event));
     this.stage?.addEventListener("lostpointercapture", (event) => this.handlePointerCancel(event));
     this.image?.addEventListener("dragstart", (event) => event.preventDefault());
+    this.image?.addEventListener("click", (event) => {
+      if (event.detail === 0 && this.mobileCheck()) this.openImmersive();
+    });
+    this.image?.addEventListener("keydown", (event) => {
+      if ((event.key === "Enter" || event.key === " ") && this.mobileCheck()) {
+        event.preventDefault();
+        this.openImmersive();
+      }
+    });
     this.root?.addEventListener("keydown", (event) => this.handleKeydown(event));
+    this.immersiveStage?.addEventListener("pointerdown", (event) =>
+      this.handleImmersivePointerDown(event));
+    this.immersiveStage?.addEventListener("pointermove", (event) =>
+      this.handleImmersivePointerMove(event));
+    this.immersiveStage?.addEventListener("pointerup", (event) =>
+      this.handleImmersivePointerUp(event));
+    this.immersiveStage?.addEventListener("pointercancel", (event) =>
+      this.handleImmersivePointerCancel(event));
+    this.immersiveStage?.addEventListener("lostpointercapture", (event) =>
+      this.handleImmersivePointerCancel(event));
+    this.immersiveImage?.addEventListener("dragstart", (event) => event.preventDefault());
+    this.immersiveCloseButton?.addEventListener("click", () => this.closeImmersive());
+    this.immersiveRoot?.addEventListener("click", (event) => {
+      if (this.immersiveScale === 1 &&
+        (event.target === this.immersiveRoot || event.target === this.immersiveStage))
+        this.closeImmersive();
+    });
     if (this.stage && typeof globalThis.ResizeObserver === "function") {
       this.resizeObserver = new globalThis.ResizeObserver(() => {
+        this.updateImageOpenerAccessibility();
         this.constrainOffsets();
         this.renderTransform();
+        if (this.isImmersive()) {
+          this.constrainImmersiveOffsets();
+          this.renderImmersiveTransform();
+        }
       });
       this.resizeObserver.observe(this.stage);
+      if (this.immersiveStage) this.resizeObserver.observe(this.immersiveStage);
     }
   }
 
@@ -95,6 +146,7 @@ export class ArtworkGallery {
     const count = this.images.length;
     const multiple = count > 1;
     const source = this.images[this.currentIndex] || "";
+    this.updateImageOpenerAccessibility();
     if (this.image) {
       this.image.src = source;
       this.image.alt = this.title || "作品图片";
@@ -125,6 +177,7 @@ export class ArtworkGallery {
       if (this.images[index]) this.preload(this.images[index]);
     }
     this.renderTransform();
+    if (this.isImmersive()) this.renderImmersive();
   }
 
   preload(source) {
@@ -138,6 +191,232 @@ export class ArtworkGallery {
       "translate3d(" + this.offsetX + "px," + this.offsetY + "px,0) scale(" + this.scale + ")";
   }
 
+  openImmersive() {
+    if (!this.images.length || !this.immersiveRoot || !this.mobileCheck() || this.isImmersive())
+      return false;
+    this.savedScrollTop = Number(this.scrollContainer?.scrollTop) || 0;
+    this.resetImmersiveView();
+    this.showImmersiveLayer?.();
+    this.immersiveRoot.setAttribute("aria-hidden", "false");
+    this.renderImmersive();
+    return true;
+  }
+
+  closeImmersive() {
+    const wasOpen = this.isImmersive();
+    this.clearSingleTap();
+    for (const pointerId of this.pointers.keys())
+      this.releaseImmersivePointerCapture(pointerId);
+    this.pointers.clear();
+    this.lastTap = null;
+    this.pinchStartDistance = 0;
+    this.pinchStartScale = 1;
+    this.resetImmersiveView();
+    if (wasOpen) this.hideImmersiveLayer?.();
+    this.immersiveRoot?.setAttribute("aria-hidden", "true");
+    if (wasOpen && this.scrollContainer) this.scrollContainer.scrollTop = this.savedScrollTop;
+    return wasOpen;
+  }
+
+  isImmersive() {
+    return this.immersiveRoot?.getAttribute?.("aria-hidden") === "false";
+  }
+
+  resetImmersiveView() {
+    this.immersiveScale = 1;
+    this.immersiveOffsetX = 0;
+    this.immersiveOffsetY = 0;
+    this.renderImmersiveTransform();
+  }
+
+  renderImmersive() {
+    if (!this.immersiveImage) return;
+    this.immersiveImage.src = this.images[this.currentIndex] || "";
+    this.immersiveImage.alt = this.title || "作品图片";
+    this.renderImmersiveTransform();
+  }
+
+  renderImmersiveTransform() {
+    if (!this.immersiveImage) return;
+    this.immersiveImage.style.transform = "translate3d(" + this.immersiveOffsetX + "px," +
+      this.immersiveOffsetY + "px,0) scale(" + this.immersiveScale + ")";
+  }
+
+  handleImmersivePointerDown(event) {
+    if (!this.isImmersive() || event.target?.closest?.(INTERACTIVE_SELECTOR)) return;
+    const pointer = {
+      id: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      x: event.clientX,
+      y: event.clientY,
+      offsetX: this.immersiveOffsetX,
+      offsetY: this.immersiveOffsetY,
+      moved: false,
+      multiTouch: false
+    };
+    this.pointers.set(event.pointerId, pointer);
+    this.immersiveStage?.setPointerCapture?.(event.pointerId);
+    if (this.pointers.size === 2) {
+      this.cancelTapSequence();
+      for (const active of this.pointers.values()) active.multiTouch = true;
+      this.pinchStartDistance = this.immersivePointerDistance();
+      this.pinchStartScale = this.immersiveScale;
+    }
+  }
+
+  handleImmersivePointerMove(event) {
+    const pointer = this.pointers.get(event.pointerId);
+    if (!pointer) return;
+    pointer.x = event.clientX;
+    pointer.y = event.clientY;
+    const moved = Math.hypot(pointer.x - pointer.startX, pointer.y - pointer.startY) >
+      DOUBLE_TAP_DISTANCE;
+    if (moved && !pointer.moved) this.cancelTapSequence();
+    pointer.moved = pointer.moved || moved;
+    if (this.pointers.size >= 2 && this.pinchStartDistance > 0) {
+      this.immersiveScale = Math.min(IMMERSIVE_MAX_SCALE, Math.max(MIN_SCALE,
+        this.pinchStartScale * this.immersivePointerDistance() / this.pinchStartDistance));
+      if (this.immersiveScale === 1) {
+        this.immersiveOffsetX = 0;
+        this.immersiveOffsetY = 0;
+      } else {
+        this.constrainImmersiveOffsets();
+      }
+      this.renderImmersiveTransform();
+      event.preventDefault?.();
+      return;
+    }
+    if (this.pointers.size !== 1 || this.immersiveScale === 1) return;
+    this.immersiveOffsetX = clampOffset(
+      pointer.offsetX + event.clientX - pointer.startX,
+      this.immersiveOverflow("width")
+    );
+    this.immersiveOffsetY = clampOffset(
+      pointer.offsetY + event.clientY - pointer.startY,
+      this.immersiveOverflow("height")
+    );
+    this.renderImmersiveTransform();
+    event.preventDefault?.();
+  }
+
+  handleImmersivePointerUp(event) {
+    const pointer = this.pointers.get(event.pointerId);
+    if (!pointer) return;
+    const pointerCount = this.pointers.size;
+    this.pointers.delete(event.pointerId);
+    this.releaseImmersivePointerCapture(event.pointerId);
+    if (pointerCount > 1 || pointer.multiTouch) {
+      if (this.pointers.size < 2) {
+        this.pinchStartDistance = 0;
+        this.rebaseRemainingImmersivePointer();
+      }
+      return;
+    }
+    const deltaX = event.clientX - pointer.startX;
+    const deltaY = event.clientY - pointer.startY;
+    if (Math.hypot(deltaX, deltaY) > DOUBLE_TAP_DISTANCE) this.cancelTapSequence();
+    if (this.immersiveScale === 1 && Math.abs(deltaX) >= SWIPE_DISTANCE &&
+      Math.abs(deltaX) > Math.abs(deltaY)) {
+      if (deltaX < 0) this.next();
+      else this.previous();
+      return;
+    }
+    if (!pointer.moved && Math.hypot(deltaX, deltaY) <= DOUBLE_TAP_DISTANCE)
+      this.handleImmersiveTap(event.clientX, event.clientY);
+  }
+
+  handleImmersivePointerCancel(event) {
+    if (!this.pointers.has(event.pointerId)) return;
+    this.pointers.delete(event.pointerId);
+    this.releaseImmersivePointerCapture(event.pointerId);
+    if (this.pointers.size < 2) {
+      this.pinchStartDistance = 0;
+      this.rebaseRemainingImmersivePointer();
+    }
+  }
+
+  handleImmersiveTap(x, y) {
+    const tap = { x, y, time: this.now() };
+    if (this.lastTap && tap.time - this.lastTap.time <= DOUBLE_TAP_DELAY &&
+      Math.hypot(tap.x - this.lastTap.x, tap.y - this.lastTap.y) <= DOUBLE_TAP_DISTANCE) {
+      this.clearSingleTap();
+      this.lastTap = null;
+      this.immersiveScale = this.immersiveScale === 1 ? 2 : 1;
+      this.immersiveOffsetX = 0;
+      this.immersiveOffsetY = 0;
+      this.renderImmersiveTransform();
+      return;
+    }
+    this.clearSingleTap();
+    this.lastTap = tap;
+    this.singleTapTimer = this.setTimer(() => {
+      this.singleTapTimer = null;
+      this.lastTap = null;
+      if (this.immersiveScale === 1) this.closeImmersive();
+    }, DOUBLE_TAP_DELAY);
+  }
+
+  clearSingleTap() {
+    if (this.singleTapTimer !== null) this.clearTimer(this.singleTapTimer);
+    this.singleTapTimer = null;
+  }
+
+  cancelTapSequence() {
+    this.clearSingleTap();
+    this.lastTap = null;
+  }
+
+  rebaseRemainingImmersivePointer() {
+    if (this.pointers.size !== 1) return;
+    const remaining = this.pointers.values().next().value;
+    remaining.startX = remaining.x;
+    remaining.startY = remaining.y;
+    remaining.offsetX = this.immersiveOffsetX;
+    remaining.offsetY = this.immersiveOffsetY;
+    remaining.moved = false;
+  }
+
+  updateImageOpenerAccessibility() {
+    if (!this.image?.setAttribute) return;
+    if (this.images.length && this.mobileCheck()) {
+      this.image.setAttribute("role", "button");
+      this.image.setAttribute("tabindex", "0");
+      this.image.setAttribute("aria-label", "打开作品大图");
+      return;
+    }
+    this.image.removeAttribute?.("role");
+    this.image.removeAttribute?.("tabindex");
+    this.image.removeAttribute?.("aria-label");
+  }
+
+  immersivePointerDistance() {
+    const [first, second] = [...this.pointers.values()];
+    return first && second ? Math.hypot(second.x - first.x, second.y - first.y) : 0;
+  }
+
+  constrainImmersiveOffsets() {
+    this.immersiveOffsetX = clampOffset(
+      this.immersiveOffsetX, this.immersiveOverflow("width"));
+    this.immersiveOffsetY = clampOffset(
+      this.immersiveOffsetY, this.immersiveOverflow("height"));
+  }
+
+  releaseImmersivePointerCapture(pointerId) {
+    if (!this.immersiveStage?.releasePointerCapture) return;
+    if (!this.immersiveStage.hasPointerCapture || this.immersiveStage.hasPointerCapture(pointerId))
+      this.immersiveStage.releasePointerCapture(pointerId);
+  }
+
+  immersiveOverflow(dimension) {
+    const property = dimension === "width" ? "Width" : "Height";
+    const stageSize = Number(this.immersiveStage?.[`client${property}`]) ||
+      Number(this.immersiveStage?.[dimension]) || 0;
+    const imageSize = Number(this.immersiveImage?.[`client${property}`]) ||
+      Number(this.immersiveImage?.[dimension]) || stageSize;
+    return Math.max(0, imageSize * this.immersiveScale - stageSize);
+  }
+
   constrainOffsets() {
     this.offsetX = clampOffset(this.offsetX, this.overflow("width"));
     this.offsetY = clampOffset(this.offsetY, this.overflow("height"));
@@ -149,6 +428,7 @@ export class ArtworkGallery {
       id: event.pointerId,
       startX: event.clientX,
       startY: event.clientY,
+      startedOnImage: event.target === this.image,
       offsetX: this.offsetX,
       offsetY: this.offsetY
     };
@@ -173,9 +453,13 @@ export class ArtworkGallery {
     if (this.scale !== 1) return;
     const deltaX = event.clientX - pointer.startX;
     const deltaY = event.clientY - pointer.startY;
-    if (Math.abs(deltaX) < 50 || Math.abs(deltaX) <= Math.abs(deltaY)) return;
-    if (deltaX < 0) this.next();
-    else this.previous();
+    if (Math.abs(deltaX) >= SWIPE_DISTANCE && Math.abs(deltaX) > Math.abs(deltaY)) {
+      if (deltaX < 0) this.next();
+      else this.previous();
+      return;
+    }
+    if (pointer.startedOnImage && Math.hypot(deltaX, deltaY) <= DOUBLE_TAP_DISTANCE &&
+      this.mobileCheck()) this.openImmersive();
   }
 
   handlePointerCancel(event) {

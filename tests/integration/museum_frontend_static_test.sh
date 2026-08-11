@@ -34,6 +34,13 @@ for id in artwork-gallery-stage artwork-image artwork-prev artwork-next \
   grep -Fq "id=\"$id\"" "$index"
 done
 
+for id in artwork-image-viewer artwork-image-viewer-stage \
+  artwork-image-viewer-image artwork-image-viewer-close; do
+  grep -Fq "id=\"$id\"" "$index"
+done
+grep -Fq 'class="artwork-image-viewer" role="dialog"' "$index"
+grep -Fq 'aria-modal="true" aria-label="作品大图查看器" aria-hidden="true"' "$index"
+
 python3 - "$index" <<'PY'
 from html.parser import HTMLParser
 from pathlib import Path
@@ -199,6 +206,11 @@ desktop_tool_values = assert_properties(
 )
 assert "top" not in desktop_tool_values, "desktop toolbar must not use top positioning"
 assert_properties(
+    "immersive artwork viewer",
+    selector_block(css, ".artwork-image-viewer"),
+    {"position": "fixed", "z-index": "80", "touch-action": "none"},
+)
+assert_properties(
     "desktop toolbar button",
     selector_block(css, ".artwork-gallery-tools button"),
     {
@@ -241,6 +253,12 @@ assert_properties(
 
 mobile_condition = "(max-width: 820px), (max-width: 900px) and (max-height: 420px) and (orientation: landscape)"
 mobile_media = media_block(mobile_condition)
+narrow_mobile_media = media_block("(max-width: 820px)")
+assert_properties(
+    "mobile legacy artwork tools",
+    selector_block(narrow_mobile_media, ".artwork-gallery-tools"),
+    {"display": "none"},
+)
 assert_properties(
     "mobile artwork layout",
     selector_block(mobile_media, ".artwork-layout"),
@@ -371,7 +389,7 @@ class ParentAudit(HTMLParser):
 
 audit = ParentAudit()
 audit.feed(Path(sys.argv[1]).read_text(encoding="utf-8"))
-for child in ("museum-shell", "description-modal", "artwork-modal", "login-modal", "notice", "fatal-error"):
+for child in ("museum-shell", "description-modal", "artwork-modal", "artwork-image-viewer", "login-modal", "notice", "fatal-error"):
     assert audit.parents.get(child) == "museum-fullscreen-root", (child, audit.parents.get(child))
 PY
 

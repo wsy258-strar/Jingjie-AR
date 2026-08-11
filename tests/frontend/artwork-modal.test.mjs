@@ -52,18 +52,21 @@ function element() {
     focus() {},
     scrollIntoView() {},
     querySelector() { return null; },
-    setAttribute(name, value) { attributes[name] = String(value); }
+    setAttribute(name, value) { attributes[name] = String(value); },
+    getAttribute(name) { return attributes[name] ?? null; }
   };
 }
 
 function modalFixture() {
   const root = element();
   const card = element();
+  const layout = element();
   const actionBar = element();
   const commentsScroller = element();
   const composer = element();
   root.querySelector = (selector) => {
     if (selector === ".modal-card") return card;
+    if (selector === ".artwork-layout") return layout;
     if (selector === ".artwork-action-bar") return actionBar;
     if (selector === ".artwork-comments-scroll") return commentsScroller;
     if (selector === ".artwork-comment-composer") return composer;
@@ -78,7 +81,9 @@ function modalFixture() {
     "artwork-like-count", "artwork-favorite", "artwork-favorite-label",
     "artwork-comment-jump", "artwork-comment-count", "artwork-share",
     "comments-title", "artwork-comments-total", "comment-list", "comments-more",
-    "comment-form", "comment-input"
+    "comment-form", "comment-input", "artwork-image-viewer",
+    "artwork-image-viewer-stage", "artwork-image-viewer-image",
+    "artwork-image-viewer-close"
   ];
   const elements = Object.fromEntries(ids.map((id) => [id, element()]));
   const galleryTools = element();
@@ -89,7 +94,10 @@ function modalFixture() {
     getElementById(id) { return id === "artwork-modal" ? root : elements[id] || null; },
     createElement: element
   };
-  return { root, card, actionBar, commentsScroller, composer, elements, galleryTools, documentObject };
+  return {
+    root, card, layout, actionBar, commentsScroller, composer,
+    elements, galleryTools, documentObject
+  };
 }
 
 function commentsModal({ request, nextBefore = 0, scrollTop = 0 } = {}) {
@@ -320,17 +328,87 @@ test("文字热点隐藏画廊、互动栏、评论区与固定评论输入区",
 test("关闭弹窗会清空画廊与评论草稿", () => {
   const modal = Object.create(ArtworkModal.prototype);
   let clears = 0;
+  let immersiveCloses = 0;
   modal.cancelLoad = () => {};
   modal.modalGeneration = 0;
   modal.modalManager = { close() {} };
   modal.root = {};
   modal.commentInput = { value: "未提交草稿" };
-  modal.galleryViewer = { clear() { clears += 1; } };
+  modal.galleryViewer = {
+    closeImmersive() { immersiveCloses += 1; },
+    clear() { clears += 1; }
+  };
 
   modal.close();
 
   assert.equal(clears, 1);
+  assert.equal(immersiveCloses, 1);
   assert.equal(modal.commentInput.value, "");
+});
+
+test("切换作品与进入文字热点前关闭顶层图片查看器", async () => {
+  const fixture = modalFixture();
+  const modal = new ArtworkModal({
+    api: {
+      async request(path) {
+        if (path.includes("/comments")) return { comments: [], nextBefore: 0 };
+        return {
+          artworkId: "work-1", title: "启航", text: "说明",
+          likeCount: 0, commentCount: 0, images: ["/a.jpg"]
+        };
+      }
+    },
+    auth: { token: () => "" }, modalManager: { open() {}, close() {} },
+    notify: (message) => assert.fail(message),
+    favorites: { isFavorite: () => false, toggle: () => false },
+    documentObject: fixture.documentObject
+  });
+  let closes = 0;
+  const originalClose = modal.galleryViewer.closeImmersive.bind(modal.galleryViewer);
+  modal.galleryViewer.closeImmersive = () => { closes += 1; originalClose(); };
+
+  await modal.open("work-1");
+  modal.openText({ title: "策展说明", text: "内容" });
+
+  assert.equal(closes, 2);
+});
+
+test("顶层图片通过 ModalManager 入栈并由 Escape 关闭后恢复作品弹窗", () => {
+  const fixture = modalFixture();
+  const opened = [];
+  const closed = [];
+  const modalManager = {
+    open(root, options) {
+      root.setAttribute("aria-hidden", "false");
+      opened.push({ root, options });
+    },
+    close(root) {
+      root.setAttribute("aria-hidden", "true");
+      closed.push(root);
+      return true;
+    }
+  };
+  const originalMatchMedia = globalThis.matchMedia;
+  globalThis.matchMedia = () => ({ matches: true });
+  try {
+    const modal = new ArtworkModal({
+      api: {}, auth: { token: () => "" }, modalManager,
+      notify: () => {}, documentObject: fixture.documentObject
+    });
+    modal.galleryViewer.setImages(["/a.jpg"], "作品");
+
+    assert.equal(modal.galleryViewer.openImmersive(), true);
+    assert.equal(opened.length, 1);
+    assert.equal(opened[0].root, fixture.elements["artwork-image-viewer"]);
+    assert.equal(opened[0].options.initialFocus,
+      fixture.elements["artwork-image-viewer-close"]);
+
+    opened[0].options.onEscape();
+    assert.deepEqual(closed, [fixture.elements["artwork-image-viewer"]]);
+    assert.equal(modal.galleryViewer.isImmersive(), false);
+  } finally {
+    globalThis.matchMedia = originalMatchMedia;
+  }
 });
 
 test("文字热点后打开作品恢复画廊、互动栏、评论区与 composer", async () => {
