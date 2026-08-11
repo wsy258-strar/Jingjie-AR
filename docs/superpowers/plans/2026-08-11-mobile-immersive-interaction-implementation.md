@@ -72,7 +72,7 @@
       assert.match(xml, /enabled="false"/);
     });
 
-再使用记录 call 命令的假 player，断言 enableGyro() 和 disableGyro() 依次产生 gyro.enable(); 与 gyro.disable();，isGyroAvailable() 读取 plugin[gyro].available。
+再使用记录 call 命令的假 player，断言 enableGyro() 和 disableGyro() 依次产生 gyro.enable(); 与 gyro.disable();，isGyroAvailable() 读取 krpano Gyro2 的只读字段 plugin[gyro].isavailable。
 
 - [ ] **Step 2: 写入失败的权限控制器测试**
 
@@ -119,7 +119,7 @@ Run:
 
 gyro-controller.js 使用 permissionRequested、permissionGranted 和 Set 类型 suspensions。requestFromGesture() 用 Function.call 调用 iOS requestPermission；没有该函数时视为 granted。autoEnable() 声明为 async：存在 requestPermission 时返回 false 且不主动弹权限框，其他设备返回 requestFromGesture() 的结果。启停调用 adapter 的公开方法。
 
-buildSceneXml() 加入 keep=true、enabled=false、camroll=true、friction=0.5 的 gyro 插件节点。适配器三个方法只读插件 available 或调用 gyro.enable()/gyro.disable()。
+buildSceneXml() 加入 keep=true、enabled=false、camroll=true、friction=0.5 的 gyro 插件节点。适配器的 isGyroAvailable() 只读取 krpano Gyro2 的 plugin[gyro].isavailable；其余两个方法调用 gyro.enable()/gyro.disable()。
 
 - [ ] **Step 5: 运行测试并提交**
 
