@@ -389,10 +389,15 @@ export class MuseumApp {
 const app = new MuseumApp();
 const policeFilingIcon = element("police-filing-icon");
 
+function hidePoliceFilingIcon() {
+  policeFilingIcon.hidden = true;
+}
+
 if (policeFilingIcon) {
-  policeFilingIcon.addEventListener("error", () => {
-    policeFilingIcon.hidden = true;
-  }, { once: true });
+  policeFilingIcon.addEventListener("error", hidePoliceFilingIcon, { once: true });
+  if (policeFilingIcon.complete && policeFilingIcon.naturalWidth === 0) {
+    hidePoliceFilingIcon();
+  }
 }
 
 element("description-open").addEventListener("click", () => {

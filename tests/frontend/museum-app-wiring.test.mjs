@@ -99,6 +99,8 @@ class FakeElement extends FakeEventTarget {
     this.paused = true;
     this.ended = false;
     this.src = "";
+    this.complete = false;
+    this.naturalWidth = 1;
     this.title = "";
     this.type = "";
     this.value = "";
@@ -186,6 +188,7 @@ const ELEMENT_IDS = [
   "login-form", "login-message", "login-modal", "login-open", "login-password",
   "login-submit", "login-username", "museum-description", "museum-fullscreen-root", "museum-shell",
   "museum-title", "music-toggle", "notice", "online-count", "panorama",
+  "police-filing-icon",
   "retry-bootstrap", "scene-audio", "scene-catalog", "scene-drawer",
   "scene-dissolve", "scene-drawer-toggle", "scene-loading", "total-views", "view-panel",
   "view-toggle", "vr-toggle"
@@ -301,7 +304,11 @@ class MuseumUiStateStub {
   }
 }
 
-async function createHarness({ reducedMotion = false, locationHref = "https://example.test/" } = {}) {
+async function createHarness({
+  reducedMotion = false,
+  locationHref = "https://example.test/",
+  policeFilingIconState = null
+} = {}) {
   const directory = await mkdtemp(join(tmpdir(), "jingjie-ar-museum-wiring-"));
   const sourcePath = new URL("../../WebApps/ARServer/www/js/museum-app.js", import.meta.url);
   let source = await readFile(sourcePath, "utf8");
@@ -340,6 +347,9 @@ globalThis.__museumVisitorSession = visitor;
   ));
 
   const document = new FakeDocument();
+  if (policeFilingIconState) {
+    Object.assign(document.getElementById("police-filing-icon"), policeFilingIconState);
+  }
   const window = new FakeEventTarget();
   const timers = [];
   window.setTimeout = (callback, delay) => {
@@ -577,6 +587,19 @@ globalThis.__museumVisitorSession = visitor;
     }
   };
 }
+
+test("备案图标在脚本接线前加载失败时立即隐藏且只注册一次错误监听", async () => {
+  const harness = await createHarness({
+    policeFilingIconState: { complete: true, naturalWidth: 0 }
+  });
+  try {
+    const icon = harness.document.getElementById("police-filing-icon");
+    assert.equal(icon.hidden, true);
+    assert.equal(icon.listeners.get("error")?.length, 1);
+  } finally {
+    await harness.cleanup();
+  }
+});
 
 test("视角适配器失败时保留选择，成功后才推进 UI", async () => {
   const harness = await createHarness();
