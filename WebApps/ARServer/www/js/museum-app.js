@@ -4,6 +4,7 @@ import { AuthSession } from "./auth-session.js";
 import { VisitorSession } from "./visitor-session.js";
 import { KrpanoAdapter } from "./krpano-adapter.js";
 import { ArtworkModal } from "./artwork-modal.js";
+import { GyroController } from "./gyro-controller.js";
 import { MuseumLifecycle } from "./museum-lifecycle.js";
 import { ModalFocusManager } from "./modal-focus.js";
 import { MuseumUiState } from "./museum-ui-state.js";
@@ -12,6 +13,9 @@ import { SceneDissolve } from "./scene-dissolve.js";
 const api = new ApiClient();
 let loginWaiter = null;
 let noticeTimer = null;
+let gyroController = null;
+let gyroGestureRequested = false;
+let transientUiSuspended = false;
 
 function element(id) {
   return document.getElementById(id);
@@ -25,8 +29,17 @@ function notify(message) {
   noticeTimer = window.setTimeout(() => { notice.hidden = true; }, 4500);
 }
 
+function suspendGyroForModal() {
+  gyroController?.suspend("modal");
+}
+
+function resumeGyroAfterModal() {
+  if (!modalManager.stack.length) gyroController?.resume("modal");
+}
+
 function openLogin() {
   if (loginWaiter) return loginWaiter.promise;
+  suspendGyroForModal();
   uiState.closeTransientLayers();
   const modal = element("login-modal");
   element("login-message").textContent = "";
@@ -51,13 +64,25 @@ function closeLogin(cancelled = true) {
   }
   loginWaiter = null;
   modalManager.close(element("login-modal"));
+  resumeGyroAfterModal();
 }
 
 const auth = new AuthSession({ client: api, onAuthenticationRequired: openLogin });
 const visitor = new VisitorSession({ client: api });
 const lifecycle = new MuseumLifecycle({ visitor, refreshCounters: () => app.loadCounters() });
 const modalManager = new ModalFocusManager();
-const artworkModal = new ArtworkModal({ api, auth, modalManager, notify });
+const gyroModalManager = {
+  open(...args) {
+    suspendGyroForModal();
+    return modalManager.open(...args);
+  },
+  close(...args) {
+    const closed = modalManager.close(...args);
+    resumeGyroAfterModal();
+    return closed;
+  }
+};
+const artworkModal = new ArtworkModal({ api, auth, modalManager: gyroModalManager, notify });
 
 function renderUiState(state) {
   const drawer = element("scene-drawer");
@@ -75,6 +100,15 @@ function renderUiState(state) {
   document.querySelectorAll("[data-view-mode]").forEach((button) => {
     button.setAttribute("aria-pressed", String(button.dataset.viewMode === state.viewMode));
   });
+
+  const hasTransientLayer = uiState.hasTransientLayer();
+  if (hasTransientLayer && !transientUiSuspended) {
+    gyroController?.suspend("transient-ui");
+    transientUiSuspended = true;
+  } else if (!hasTransientLayer && transientUiSuspended) {
+    gyroController?.resume("transient-ui");
+    transientUiSuspended = false;
+  }
 }
 
 function setMusicButtonState(state) {
@@ -126,6 +160,12 @@ export class MuseumApp {
       },
       reducedMotion
     });
+    this.gyro = new GyroController({
+      adapter: this.adapter,
+      onDenied: () => notify("未能启用陀螺仪，仍可拖动浏览")
+    });
+    gyroController = this.gyro;
+    Promise.resolve(this.gyro.autoEnable()).catch(() => {});
   }
 
   async bootstrap() {
@@ -242,6 +282,7 @@ export class MuseumApp {
   }
 
   handleHotspot(hotspot) {
+    if (hotspot.type === "artwork" || hotspot.type === "text") suspendGyroForModal();
     uiState.closeTransientLayers();
     if (hotspot.type === "scene" && hotspot.targetSceneId) {
       this.switchScene(hotspot.targetSceneId);
@@ -327,11 +368,15 @@ export class MuseumApp {
 const app = new MuseumApp();
 
 element("description-open").addEventListener("click", () => {
+  suspendGyroForModal();
   uiState.closeTransientLayers();
   const modal = element("description-modal");
   modalManager.open(modal, {
     initialFocus: modal.querySelector(".modal-card"),
-    onEscape: () => modalManager.close(modal)
+    onEscape: () => {
+      modalManager.close(modal);
+      resumeGyroAfterModal();
+    }
   });
 });
 
@@ -361,7 +406,13 @@ document.querySelectorAll("[data-view-mode]").forEach((button) => {
 });
 
 for (const type of ["pointerdown", "wheel"]) {
-  element("panorama").addEventListener(type, () => uiState.closeTransientLayers(), {
+  element("panorama").addEventListener(type, () => {
+    uiState.closeTransientLayers();
+    if (type === "pointerdown" && !gyroGestureRequested) {
+      gyroGestureRequested = true;
+      Promise.resolve(gyroController?.requestFromGesture()).catch(() => {});
+    }
+  }, {
     capture: true,
     passive: true
   });
@@ -375,6 +426,7 @@ document.addEventListener("keydown", (event) => {
 document.querySelectorAll('[data-close="description"]').forEach((button) => {
   button.addEventListener("click", () => {
     modalManager.close(element("description-modal"));
+    resumeGyroAfterModal();
   });
 });
 
@@ -470,6 +522,7 @@ element("retry-bootstrap").addEventListener("click", () => app.bootstrap());
 
 window.addEventListener("pagehide", () => {
   if (app.sceneController) app.sceneController.abort();
+  app.gyro.destroy();
 });
 
 if (auth.token()) element("login-open").textContent = "已登录 · 退出";

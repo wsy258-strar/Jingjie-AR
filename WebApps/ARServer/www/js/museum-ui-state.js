@@ -16,6 +16,10 @@ export class MuseumUiState {
     };
   }
 
+  hasTransientLayer() {
+    return this.sceneDrawerOpen || this.viewPanelOpen;
+  }
+
   update(next) {
     const changed = Object.entries(next).some(([key, value]) => this[key] !== value);
     if (!changed) return this.snapshot();

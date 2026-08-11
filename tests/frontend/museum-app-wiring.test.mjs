@@ -266,6 +266,10 @@ class MuseumUiStateStub {
     };
   }
 
+  hasTransientLayer() {
+    return this.sceneDrawerOpen || this.viewPanelOpen;
+  }
+
   update(next) {
     if (!Object.entries(next).some(([key, value]) => this[key] !== value)) return;
     Object.assign(this, next);
@@ -306,7 +310,7 @@ async function createHarness({ reducedMotion = false, locationHref = "https://ex
   source = source.replace(/^import .*;\n/gm, "");
   source = `const {
     ApiClient, ApiError, AuthSession, VisitorSession, KrpanoAdapter, ArtworkModal,
-    MuseumLifecycle, ModalFocusManager, MuseumUiState, SceneDissolve
+    MuseumLifecycle, ModalFocusManager, MuseumUiState, SceneDissolve, GyroController
   } = globalThis.__museumAppTestDeps;\n${source}`;
   source += `
 globalThis.__museumAppTestInstance = app;
@@ -387,6 +391,8 @@ globalThis.__museumVisitorSession = visitor;
     constructor(options) {
       this.options = options;
       this.viewMode = "normal";
+      this.gyroEnableCalls = 0;
+      this.gyroDisableCalls = 0;
       globalThis.__museumAppAdapter = this;
     }
     invalidate() {}
@@ -404,10 +410,60 @@ globalThis.__museumVisitorSession = visitor;
       if (this.vrError) throw this.vrError;
       return Promise.resolve(true);
     }
+    isGyroAvailable() { return true; }
+    enableGyro() { this.gyroEnableCalls += 1; }
+    disableGyro() { this.gyroDisableCalls += 1; }
+  }
+  class GyroController {
+    constructor({ adapter, onDenied } = {}) {
+      this.adapter = adapter;
+      this.onDenied = onDenied;
+      this.autoEnableCalls = 0;
+      this.requestFromGestureCalls = 0;
+      this.suspensions = new Set();
+      this.enabled = false;
+      this.destroyCalls = 0;
+    }
+    autoEnable() {
+      this.autoEnableCalls += 1;
+      return false;
+    }
+    requestFromGesture() {
+      this.requestFromGestureCalls += 1;
+      if (!this.enabled && !this.suspensions.size) {
+        this.adapter.enableGyro();
+        this.enabled = true;
+      }
+      return this.enabled;
+    }
+    suspend(reason) {
+      this.suspensions.add(reason);
+      if (this.enabled) {
+        this.adapter.disableGyro();
+        this.enabled = false;
+      }
+    }
+    resume(reason) {
+      this.suspensions.delete(reason);
+      if (!this.enabled && !this.suspensions.size) {
+        this.adapter.enableGyro();
+        this.enabled = true;
+      }
+      return this.enabled;
+    }
+    destroy() {
+      this.destroyCalls += 1;
+      if (this.enabled) this.adapter.disableGyro();
+      this.enabled = false;
+    }
   }
   class ArtworkModal {
-    open() {}
-    openText() {}
+    constructor({ modalManager } = {}) {
+      this.modalManager = modalManager;
+    }
+    open() { this.modalManager.open(document.getElementById("artwork-modal")); }
+    openText() { this.modalManager.open(document.getElementById("artwork-modal")); }
+    close() { this.modalManager.close(document.getElementById("artwork-modal")); }
   }
   const previous = {
     document: globalThis.document,
@@ -424,7 +480,7 @@ globalThis.__museumVisitorSession = visitor;
   globalThis.window = window;
   globalThis.__museumAppTestDeps = {
     ApiClient, ApiError, AuthSession, VisitorSession, KrpanoAdapter, ArtworkModal,
-    MuseumLifecycle, ModalFocusManager, MuseumUiState: MuseumUiStateStub, SceneDissolve
+    MuseumLifecycle, ModalFocusManager, MuseumUiState: MuseumUiStateStub, SceneDissolve, GyroController
   };
 
   await import(`${pathToFileURL(modulePath).href}?case=${Date.now()}-${Math.random()}`);
@@ -536,6 +592,77 @@ test("krpano 子节点阻止冒泡时 panorama capture 仍关闭浮层且保持 
       const listener = panorama.listeners.get(type).find((entry) => entry.capture);
       assert.equal(listener?.passive, true, `${type} capture listener 应保持 passive`);
     }
+  } finally {
+    await harness.cleanup();
+  }
+});
+
+test("播放器初始化后自动启用，且仅首次全景 pointerdown 请求陀螺仪权限", async () => {
+  const harness = await createHarness();
+  try {
+    assert.equal(harness.app.gyro.autoEnableCalls, 1);
+    await harness.document.dispatch("pointerdown");
+    assert.equal(harness.app.gyro.requestFromGestureCalls, 0);
+
+    const panorama = harness.document.getElementById("panorama");
+    await panorama.dispatch("pointerdown");
+    await panorama.dispatch("pointerdown");
+    assert.equal(harness.app.gyro.requestFromGestureCalls, 1);
+    assert.equal(harness.adapter.gyroEnableCalls, 1);
+  } finally {
+    await harness.cleanup();
+  }
+});
+
+test("抽屉和视角浮层以 transient-ui 原因暂停，关闭后恢复陀螺仪", async () => {
+  const harness = await createHarness();
+  try {
+    const drawerToggle = harness.document.getElementById("scene-drawer-toggle");
+    const viewToggle = harness.document.getElementById("view-toggle");
+    const panorama = harness.document.getElementById("panorama");
+    await panorama.dispatch("pointerdown");
+    assert.equal(harness.adapter.gyroEnableCalls, 1);
+
+    await drawerToggle.dispatch("click");
+    assert.deepEqual([...harness.app.gyro.suspensions], ["transient-ui"]);
+    assert.equal(harness.adapter.gyroDisableCalls, 1);
+    await drawerToggle.dispatch("click");
+    assert.equal(harness.app.gyro.suspensions.size, 0);
+    assert.equal(harness.adapter.gyroEnableCalls, 2);
+
+    await viewToggle.dispatch("click");
+    assert.deepEqual([...harness.app.gyro.suspensions], ["transient-ui"]);
+    await panorama.dispatch("pointerdown");
+    assert.equal(harness.app.gyro.suspensions.size, 0);
+    assert.equal(harness.adapter.gyroEnableCalls, 3);
+  } finally {
+    await harness.cleanup();
+  }
+});
+
+test("作品、登录和简介模态框以 modal 原因暂停，关闭后恢复并在 pagehide 销毁", async () => {
+  const harness = await createHarness();
+  try {
+    const panorama = harness.document.getElementById("panorama");
+    await panorama.dispatch("pointerdown");
+
+    harness.app.handleHotspot({ type: "artwork", artworkId: "artwork-1" });
+    assert.deepEqual([...harness.app.gyro.suspensions], ["modal"]);
+    harness.app.artworkModal.close();
+    assert.equal(harness.app.gyro.suspensions.size, 0);
+
+    await harness.document.getElementById("description-open").dispatch("click");
+    assert.deepEqual([...harness.app.gyro.suspensions], ["modal"]);
+    await harness.document.dispatch("keydown", { key: "Escape" });
+    assert.equal(harness.app.gyro.suspensions.size, 0);
+
+    await harness.document.getElementById("login-open").dispatch("click");
+    assert.deepEqual([...harness.app.gyro.suspensions], ["modal"]);
+    await harness.document.dispatch("keydown", { key: "Escape" });
+    assert.equal(harness.app.gyro.suspensions.size, 0);
+
+    await harness.window.dispatch("pagehide");
+    assert.equal(harness.app.gyro.destroyCalls, 1);
   } finally {
     await harness.cleanup();
   }
