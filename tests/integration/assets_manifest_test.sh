@@ -8,6 +8,11 @@ manifest="$root/WebApps/ARServer/config/assets-manifest.json"
 catalog="$root/WebApps/ARServer/config/exhibition.json"
 runtime_root="$asset_root/krp/runtime"
 
+test -s "$asset_root/filing/beian_icon.png" || {
+  printf 'police filing icon missing: %s/filing/beian_icon.png\\n' "$asset_root" >&2
+  exit 1
+}
+
 python3 - "$manifest" "$catalog" "$static_root" <<'PY'
 import hashlib
 import json

@@ -64,7 +64,11 @@
     <a id="icp-filing-link" href="https://beian.miit.gov.cn/" target="_blank" rel="noopener noreferrer">您的ICP备案号</a>
     <span class="filing-separator" aria-hidden="true">|</span>
     <!-- 公安审核后，将文字和链接替换为平台生成的公安联网备案信息。 -->
-    <a id="police-filing-link" href="https://www.beian.gov.cn/" target="_blank" rel="noopener noreferrer">您的公安联网备案号</a>
+    <a id="police-filing-link" href="https://www.beian.gov.cn/" target="_blank" rel="noopener noreferrer">
+      <!-- 可将 src 替换为公安备案平台要求的正式图标地址。 -->
+      <img id="police-filing-icon" class="police-filing-icon" src="/assets/filing/beian_icon.png" alt="" aria-hidden="true">
+      <span>您的公安联网备案号</span>
+    </a>
   </footer>
 
   <section id="description-modal" class="modal" role="dialog" aria-modal="true"
@@ -171,6 +175,15 @@
     </div>
   </section>
 
+  <section id="artwork-image-viewer" class="artwork-image-viewer" role="dialog"
+    aria-modal="true" aria-label="作品大图查看器" aria-hidden="true">
+    <button id="artwork-image-viewer-close" class="artwork-image-viewer-close"
+      type="button" aria-label="关闭作品大图">×</button>
+    <div id="artwork-image-viewer-stage" class="artwork-image-viewer-stage">
+      <img id="artwork-image-viewer-image" class="artwork-image-viewer-image" alt="作品图片">
+    </div>
+  </section>
+
   <section id="login-modal" class="modal" role="dialog" aria-modal="true"
     aria-labelledby="login-title" aria-hidden="true">
     <div class="modal-backdrop" data-login-close></div>
@@ -191,6 +204,7 @@
     </div>
   </section>
 
+  <div id="landscape-hint" class="landscape-hint" role="status" hidden>请旋转手机横屏浏览</div>
   <div id="notice" class="notice" role="status" aria-live="polite" aria-atomic="true" hidden></div>
   <div id="fatal-error" class="fatal-error" role="alert" hidden>
     <p>展馆目录暂时无法加载，请检查网络后重试。</p>

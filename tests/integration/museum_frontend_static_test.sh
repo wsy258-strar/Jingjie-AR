@@ -23,6 +23,9 @@ grep -Fq 'id="icp-filing-link"' "$index"
 grep -Fq 'href="https://beian.miit.gov.cn/"' "$index"
 grep -Fq 'id="police-filing-link"' "$index"
 grep -Fq 'href="https://www.beian.gov.cn/"' "$index"
+grep -Fq 'id="police-filing-icon"' "$index"
+grep -Fq 'class="police-filing-icon"' "$index"
+grep -Fq 'src="/assets/filing/beian_icon.png"' "$index"
 grep -Fq '您的ICP备案号' "$index"
 grep -Fq '您的公安联网备案号' "$index"
 
@@ -33,6 +36,13 @@ for id in artwork-gallery-stage artwork-image artwork-prev artwork-next \
   artwork-comment-jump artwork-comment-count artwork-share artwork-comments-total; do
   grep -Fq "id=\"$id\"" "$index"
 done
+
+for id in artwork-image-viewer artwork-image-viewer-stage \
+  artwork-image-viewer-image artwork-image-viewer-close; do
+  grep -Fq "id=\"$id\"" "$index"
+done
+grep -Fq 'class="artwork-image-viewer" role="dialog"' "$index"
+grep -Fq 'aria-modal="true" aria-label="作品大图查看器" aria-hidden="true"' "$index"
 
 python3 - "$index" <<'PY'
 from html.parser import HTMLParser
@@ -199,6 +209,11 @@ desktop_tool_values = assert_properties(
 )
 assert "top" not in desktop_tool_values, "desktop toolbar must not use top positioning"
 assert_properties(
+    "immersive artwork viewer",
+    selector_block(css, ".artwork-image-viewer"),
+    {"position": "fixed", "z-index": "80", "touch-action": "none"},
+)
+assert_properties(
     "desktop toolbar button",
     selector_block(css, ".artwork-gallery-tools button"),
     {
@@ -241,6 +256,12 @@ assert_properties(
 
 mobile_condition = "(max-width: 820px), (max-width: 900px) and (max-height: 420px) and (orientation: landscape)"
 mobile_media = media_block(mobile_condition)
+narrow_mobile_media = media_block("(max-width: 820px)")
+assert_properties(
+    "mobile legacy artwork tools",
+    selector_block(narrow_mobile_media, ".artwork-gallery-tools"),
+    {"display": "none"},
+)
 assert_properties(
     "mobile artwork layout",
     selector_block(mobile_media, ".artwork-layout"),
@@ -324,6 +345,8 @@ grep -Fq 'aria-controls="scene-drawer"' "$index"
 grep -Fq 'aria-expanded="false"' "$index"
 grep -Fq 'id="scene-drawer"' "$index"
 grep -Fq 'id="fullscreen-toggle"' "$index"
+grep -Fq 'id="landscape-hint" class="landscape-hint" role="status" hidden' "$index"
+grep -Fq '请旋转手机横屏浏览' "$index"
 grep -Fq 'id="music-toggle"' "$index"
 grep -Fq 'id="vr-toggle"' "$index"
 grep -Fq 'id="view-toggle"' "$index"
@@ -371,7 +394,7 @@ class ParentAudit(HTMLParser):
 
 audit = ParentAudit()
 audit.feed(Path(sys.argv[1]).read_text(encoding="utf-8"))
-for child in ("museum-shell", "description-modal", "artwork-modal", "login-modal", "notice", "fatal-error"):
+for child in ("museum-shell", "description-modal", "artwork-modal", "artwork-image-viewer", "login-modal", "landscape-hint", "notice", "fatal-error"):
     assert audit.parents.get(child) == "museum-fullscreen-root", (child, audit.parents.get(child))
 PY
 
@@ -395,7 +418,11 @@ grep -Fq 'scene-drawer-toggle' "$app"
 grep -Fq 'view-toggle' "$app"
 grep -Fq 'data-view-mode' "$app"
 grep -Fq 'fullscreenchange' "$app"
+grep -Fq 'FullscreenOrientation' "$app"
+grep -Fq 'landscape-hint' "$app"
 grep -Fq 'element("museum-fullscreen-root")' "$app"
+grep -Fq 'policeFilingIcon.addEventListener("error"' "$app"
+grep -Fq 'policeFilingIcon.hidden = true' "$app"
 grep -Fq 'adapter.setViewMode' "$app"
 grep -Fq 'adapter.enterVr' "$app"
 grep -Fq 'pointerdown' "$app"
@@ -410,9 +437,11 @@ grep -Fq 'height: 100dvh' "$css"
 grep -Fq '.floating-header' "$css"
 grep -Fq 'backdrop-filter: blur(' "$css"
 grep -Fq '.viewer-toolbar' "$css"
+grep -Fq '.landscape-hint' "$css"
 grep -Fq '.scene-drawer' "$css"
 grep -Fq '.scene-drawer.is-open' "$css"
 grep -Fq '.filing-records' "$css"
+grep -Fq '.police-filing-icon' "$css"
 grep -Fq '.scene-dissolve' "$css"
 grep -Fq '.museum-fullscreen-root.is-vr-mode' "$css"
 grep -Fq 'flex: 0 0 100px;' "$css"

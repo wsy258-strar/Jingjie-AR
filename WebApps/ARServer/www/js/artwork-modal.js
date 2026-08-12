@@ -47,6 +47,8 @@ export class ArtworkModal {
     this.title = documentObject.getElementById("artwork-title");
     this.gallery = documentObject.getElementById("artwork-gallery");
     this.galleryTools = this.gallery.querySelector(".artwork-gallery-tools");
+    this.immersiveRoot = documentObject.getElementById("artwork-image-viewer");
+    this.immersiveCloseButton = documentObject.getElementById("artwork-image-viewer-close");
     this.galleryViewer = new ArtworkGallery({
       root: this.gallery,
       stage: documentObject.getElementById("artwork-gallery-stage"),
@@ -57,7 +59,17 @@ export class ArtworkModal {
       status: documentObject.getElementById("artwork-image-status"),
       zoomInButton: documentObject.getElementById("artwork-zoom-in"),
       zoomOutButton: documentObject.getElementById("artwork-zoom-out"),
-      resetButton: documentObject.getElementById("artwork-reset")
+      resetButton: documentObject.getElementById("artwork-reset"),
+      immersiveRoot: this.immersiveRoot,
+      immersiveStage: documentObject.getElementById("artwork-image-viewer-stage"),
+      immersiveImage: documentObject.getElementById("artwork-image-viewer-image"),
+      immersiveCloseButton: this.immersiveCloseButton,
+      scrollContainer: this.root.querySelector(".artwork-layout"),
+      showImmersiveLayer: () => this.modalManager.open(this.immersiveRoot, {
+        initialFocus: this.immersiveCloseButton,
+        onEscape: () => this.galleryViewer.closeImmersive()
+      }),
+      hideImmersiveLayer: () => this.modalManager.close(this.immersiveRoot)
     });
     this.text = documentObject.getElementById("artwork-text");
     this.detailsPanel = documentObject.getElementById("artwork-details-panel");
@@ -114,6 +126,7 @@ export class ArtworkModal {
   }
 
   async open(artworkId) {
+    this.galleryViewer.closeImmersive();
     this.cancelLoad();
     const generation = ++this.modalGeneration;
     this.modalManager.open(this.root, {
@@ -159,6 +172,7 @@ export class ArtworkModal {
   }
 
   openText(hotspot) {
+    this.galleryViewer.closeImmersive();
     this.cancelLoad();
     ++this.modalGeneration;
     this.modalManager.open(this.root, {
@@ -353,6 +367,7 @@ export class ArtworkModal {
   }
 
   close() {
+    this.galleryViewer.closeImmersive();
     this.cancelLoad();
     ++this.modalGeneration;
     this.modalManager.close(this.root);

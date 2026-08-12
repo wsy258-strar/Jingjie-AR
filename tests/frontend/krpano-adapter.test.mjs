@@ -61,7 +61,7 @@ test("XML 转义覆盖标签、引号、与号和单引号", () => {
 });
 
 test("场景 XML 包含低清预览、高清立方体和视角，且不渲染 inactive 热点", () => {
-  const xml = buildSceneXml(scene);
+  const xml = buildSceneXml(scene, null, VIEW_MODES.NORMAL, false, 12);
   assert.match(xml, /fullscreen_mirroring="true"/);
   assert.match(xml, /mobilevr_fake_support="true"/);
   assert.match(xml, /<plugin name="webvr" devices="html5" keep="true" url="\/assets\/krp\/plugins\/webvr\.js" mobilevr_support="true"/);
@@ -75,6 +75,113 @@ test("场景 XML 包含低清预览、高清立方体和视角，且不渲染 in
   assert.doesNotMatch(xml, /type="scene"/);
   assert.doesNotMatch(xml, /type="inactive"/);
   assert.doesNotMatch(xml, /inactive-hotspot/);
+  assert.match(xml, /onpreviewcomplete="js\(JingjieARSceneBridge\(0,12\)\);"/);
+  assert.match(xml, /onloadcomplete="js\(JingjieARSceneBridge\(1,12\)\);"/);
+});
+
+test("场景与展品热点分别注册循环引导动效，并在点击前停止 caller 动画", () => {
+  const xml = buildSceneXml({
+    ...scene,
+    hotspots: [
+      scene.hotspots[0],
+      {
+        hotspotId: "artwork-hotspot",
+        type: "artwork",
+        title: "青花瓷",
+        ath: 6,
+        atv: -3,
+        iconUrl: "/assets/hotspot/artwork.png",
+        renderable: true
+      }
+    ]
+  });
+
+  assert.match(xml, /<action name="scene_hotspot_pulse">/);
+  assert.match(xml, /<action name="artwork_hotspot_pulse">/);
+  assert.match(xml, /hotspot\[%1\]/);
+  assert.match(xml, /onloaded="scene_hotspot_pulse\(get\(name\)\);"/);
+  assert.match(xml, /onloaded="artwork_hotspot_pulse\(get\(name\)\);"/);
+  const actionsXml = xml.match(/<action name="scene_hotspot_pulse">[\s\S]*?<\/action><action name="artwork_hotspot_pulse">[\s\S]*?<\/action>/)?.[0] || "";
+  assert.doesNotMatch(actionsXml, /tween\(caller\./);
+
+  const sceneAction = xml.match(
+    /<action name="scene_hotspot_pulse"><!\[CDATA\[([\s\S]*?)\]\]><\/action>/
+  )?.[1] || "";
+  assert.match(sceneAction, /tween\(hotspot\[%1\]\.oy,-18,0\.6/);
+  assert.match(sceneAction, /tween\(hotspot\[%1\]\.oy,0,0\.6/);
+  assert.doesNotMatch(sceneAction, /\.scale/);
+  assert.doesNotMatch(sceneAction, /\.alpha/);
+
+  const artworkAction = xml.match(
+    /<action name="artwork_hotspot_pulse"><!\[CDATA\[([\s\S]*?)\]\]><\/action>/
+  )?.[1] || "";
+  assert.match(artworkAction, /tween\(hotspot\[%1\]\.scale,1\.26,0\.6/);
+  assert.match(artworkAction, /tween\(hotspot\[%1\]\.scale,1,0\.6/);
+  assert.match(artworkAction, /tween\(hotspot\[%1\]\.alpha,1,0\.6/);
+  assert.match(artworkAction, /tween\(hotspot\[%1\]\.alpha,0\.82,0\.6/);
+  assert.match(artworkAction, /tween\(hotspot\[%1\]\.oy,-7,0\.6/);
+  assert.match(artworkAction, /tween\(hotspot\[%1\]\.oy,0,0\.6/);
+  assert.match(xml, /onclick="stoptween\(caller\.scale\); stoptween\(caller\.alpha\); stoptween\(caller\.oy\); js\(JingjieARHotspotBridge\(0\)\);"/);
+  assert.match(xml, /onclick="stoptween\(caller\.scale\); stoptween\(caller\.alpha\); stoptween\(caller\.oy\); js\(JingjieARHotspotBridge\(1\)\);"/);
+
+  for (const actionName of ["scene_hotspot_pulse", "artwork_hotspot_pulse"]) {
+    const actionBody = xml.match(
+      new RegExp(`<action name="${actionName}"><!\\[CDATA\\[([\\s\\S]*?)\\]\\]></action>`)
+    )?.[1] || "";
+    const openingParentheses = (actionBody.match(/\(/g) || []).length;
+    const closingParentheses = (actionBody.match(/\)/g) || []).length;
+    assert.equal(
+      openingParentheses,
+      closingParentheses,
+      `${actionName} 的 krpano action 括号必须闭合`
+    );
+  }
+});
+
+test("reduced motion 场景不输出热点循环，但保留可点击热点", () => {
+  const xml = buildSceneXml({
+    ...scene,
+    hotspots: [
+      scene.hotspots[0],
+      {
+        hotspotId: "artwork-hotspot",
+        type: "artwork",
+        title: "青花瓷",
+        ath: 6,
+        atv: -3,
+        iconUrl: "/assets/hotspot/artwork.png",
+        renderable: true
+      }
+    ]
+  }, null, VIEW_MODES.NORMAL, true);
+
+  assert.doesNotMatch(xml, /hotspot_pulse/);
+  assert.match(xml, /onclick="stoptween\(caller\.scale\); stoptween\(caller\.alpha\); stoptween\(caller\.oy\); js\(JingjieARHotspotBridge\(0\)\);"/);
+  assert.match(xml, /onclick="stoptween\(caller\.scale\); stoptween\(caller\.alpha\); stoptween\(caller\.oy\); js\(JingjieARHotspotBridge\(1\)\);"/);
+});
+
+test("场景 XML 注册 Gyro2 且默认由页面控制启用", () => {
+  const xml = buildSceneXml(scene);
+  assert.match(xml, /<plugin name="gyro" devices="html5" keep="true"/);
+  assert.match(xml, /url="\/assets\/krp\/plugins\/gyro2\.js"/);
+  assert.match(xml, /enabled="false"/);
+});
+
+test("Gyro2 适配器调用插件并读取可用性", () => {
+  const calls = [];
+  const adapter = new KrpanoAdapter({ targetId: "panorama" });
+  adapter.player = {
+    get(key) {
+      assert.equal(key, "plugin[gyro].isavailable");
+      return true;
+    },
+    call(command) { calls.push(command); }
+  };
+
+  adapter.enableGyro();
+  adapter.disableGyro();
+  assert.deepEqual(calls, ["gyro.enable();", "gyro.disable();"]);
+  assert.equal(adapter.isGyroAvailable(), true);
 });
 
 test("场景 XML 将 WebVR 可用性和进出事件桥接到适配层", () => {
@@ -141,6 +248,38 @@ test("播放器仅嵌入一次，旧 generation 不能覆盖新场景", async ()
     assert.equal(await adapter.loadScene({ ...scene, sceneId: "old" }, 1), false);
     assert.equal(calls.length, 1);
     assert.match(calls[0], /15949056_%s\.jpg/);
+  } finally {
+    if (previousEmbedpano === undefined) delete globalThis.embedpano;
+    else globalThis.embedpano = previousEmbedpano;
+  }
+});
+
+test("场景事件桥只向应用层转发最新 generation", async () => {
+  const previousEmbedpano = globalThis.embedpano;
+  const events = [];
+  const calls = [];
+  const player = {
+    get() { return "0"; },
+    call(command) { calls.push(command); }
+  };
+  globalThis.embedpano = (options) => options.onready(player);
+
+  try {
+    const adapter = new KrpanoAdapter({
+      targetId: "panorama",
+      onSceneEvent(event) { events.push(event); }
+    });
+    await adapter.loadScene(scene, 4);
+    assert.match(calls.at(-1), /JingjieARSceneBridge\(0,4\)/);
+    globalThis.JingjieARSceneBridge(0, 3);
+    globalThis.JingjieARSceneBridge(1, 3);
+    assert.deepEqual(events, []);
+    globalThis.JingjieARSceneBridge(0, 4);
+    globalThis.JingjieARSceneBridge(1, 4);
+    assert.deepEqual(events, [
+      { type: "preview-visible", generation: 4 },
+      { type: "complete", generation: 4 }
+    ]);
   } finally {
     if (previousEmbedpano === undefined) delete globalThis.embedpano;
     else globalThis.embedpano = previousEmbedpano;

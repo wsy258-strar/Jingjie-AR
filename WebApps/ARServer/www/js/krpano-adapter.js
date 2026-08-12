@@ -35,12 +35,18 @@ function isSupportedViewMode(mode) {
 
 let hotspotBridge = null;
 let webVrBridge = null;
+let sceneEventBridge = null;
 
 const WEBVR_EVENTS = Object.freeze({
   0: "unavailable",
   1: "available",
   2: "entered",
   3: "exited"
+});
+
+const SCENE_EVENTS = Object.freeze({
+  0: "preview-visible",
+  1: "complete"
 });
 
 globalThis.JingjieARHotspotBridge = function (index) {
@@ -50,6 +56,13 @@ globalThis.JingjieARHotspotBridge = function (index) {
 globalThis.JingjieARWebVrBridge = function (eventCode) {
   const event = WEBVR_EVENTS[Number(eventCode)];
   if (event && webVrBridge) webVrBridge(event);
+};
+
+globalThis.JingjieARSceneBridge = function (eventCode, generation) {
+  const type = SCENE_EVENTS[Number(eventCode)];
+  const requestedGeneration = Number(generation);
+  if (type && Number.isFinite(requestedGeneration) && sceneEventBridge)
+    sceneEventBridge({ type, generation: requestedGeneration });
 };
 
 export function xmlEscape(value) {
@@ -91,18 +104,58 @@ function renderableHotspots(scene) {
     : [];
 }
 
-export function buildSceneXml(scene, viewOverride = null, viewMode = VIEW_MODES.NORMAL) {
+export function buildSceneXml(
+  scene,
+  viewOverride = null,
+  viewMode = VIEW_MODES.NORMAL,
+  reducedMotion = false,
+  generation = -1
+) {
   const view = viewFor(scene, viewOverride, viewMode);
+  const sceneGeneration = finiteNumber(generation, -1);
   const hotspots = renderableHotspots(scene);
-  const hotspotXml = hotspots.map((hotspot, index) => [
+  const shouldReduceMotion = Boolean(reducedMotion);
+  const hotspotPulseActions = shouldReduceMotion ? "" : [
+    '<action name="scene_hotspot_pulse"><![CDATA[',
+    'if(hotspot[%1], ',
+    'tween(hotspot[%1].oy,-18,0.6,default, ',
+    'tween(hotspot[%1].oy,0,0.6,default, ',
+    'if(hotspot[%1], scene_hotspot_pulse(%1););',
+    ');',
+    ');',
+    ');',
+    ']]></action>',
+    '<action name="artwork_hotspot_pulse"><![CDATA[',
+    'if(hotspot[%1], ',
+    'tween(hotspot[%1].scale,1.26,0.6,default, tween(hotspot[%1].scale,1,0.6)); ',
+    'tween(hotspot[%1].alpha,1,0.6,default, tween(hotspot[%1].alpha,0.82,0.6)); ',
+    'tween(hotspot[%1].oy,-7,0.6,default, ',
+    'tween(hotspot[%1].oy,0,0.6,default, ',
+    'if(hotspot[%1], artwork_hotspot_pulse(%1););',
+    ');',
+    ');',
+    ');',
+    ']]></action>'
+  ].join("");
+  const hotspotXml = hotspots.map((hotspot, index) => {
+    const hotspotType = hotspot.type;
+    const animated = hotspotType === "scene" || hotspotType === "artwork";
+    const onloaded = !shouldReduceMotion && animated ?
+      ` onloaded="${hotspotType}_hotspot_pulse(get(name));"` : "";
+    const alpha = hotspotType === "artwork" ? ' alpha="0.82"' : "";
+    const onclick = animated ?
+      `stoptween(caller.scale); stoptween(caller.alpha); stoptween(caller.oy); js(JingjieARHotspotBridge(${index}));` :
+      `js(JingjieARHotspotBridge(${index}));`;
+    return [
     '<hotspot name="', xmlEscape(hotspot.hotspotId || `hotspot-${index}`),
     '" type="image" crop="0|0|128|128',
     '" title="', xmlEscape(hotspot.title),
     '" ath="', finiteNumber(hotspot.ath, 0),
     '" atv="', finiteNumber(hotspot.atv, 0),
     '" url="', xmlEscape(hotspot.iconUrl),
-    '" onclick="js(JingjieARHotspotBridge(', index, '));" />'
-  ].join("")).join("");
+    '"', alpha, onloaded, ' onclick="', onclick, '" />'
+    ].join("");
+  }).join("");
 
   return [
     '<krpano version="1.19">',
@@ -113,11 +166,18 @@ export function buildSceneXml(scene, viewOverride = null, viewMode = VIEW_MODES.
     ' onunavailable="js(JingjieARWebVrBridge(0));"',
     ' onentervr="js(JingjieARWebVrBridge(2));"',
     ' onexitvr="js(JingjieARWebVrBridge(3));" />',
+    '<plugin name="gyro" devices="html5" keep="true"',
+    ' url="/assets/krp/plugins/gyro2.js" enabled="false"',
+    ' camroll="true" friction="0.5" />',
+    '<events name="jingjie_scene_events"',
+    ' onpreviewcomplete="js(JingjieARSceneBridge(0,', sceneGeneration, '));"',
+    ' onloadcomplete="js(JingjieARSceneBridge(1,', sceneGeneration, '));" />',
     '<preview url="', xmlEscape(scene.previewUrl), '" />',
     '<image><cube url="', xmlEscape(scene.cubeUrl), '" /></image>',
     '<view hlookat="', view.hlookat, '" vlookat="', view.vlookat,
     '" fov="', view.fov, '" fovtype="MFOV" stereographic="', view.stereographic,
     '" fisheye="', view.fisheye, '" />',
+    hotspotPulseActions,
     hotspotXml,
     '</krpano>'
   ].join("");
@@ -132,6 +192,7 @@ export class KrpanoAdapter {
   constructor({
     targetId,
     onHotspot,
+    onSceneEvent = () => {},
     reducedMotion = false,
     onVrStateChange = () => {},
     vrEnterTimeoutMs = 5000,
@@ -141,11 +202,14 @@ export class KrpanoAdapter {
     if (!targetId) throw new Error("KrpanoAdapter requires targetId");
     this.targetId = targetId;
     this.onHotspot = typeof onHotspot === "function" ? onHotspot : () => {};
+    this.onSceneEvent = typeof onSceneEvent === "function" ? onSceneEvent : () => {};
     this.player = null;
     this.initializePromise = null;
     this.latestGeneration = -1;
     this.loaded = false;
     this.currentHotspots = [];
+    this.currentSceneXml = "";
+    this.previousSceneState = null;
     this.viewMode = VIEW_MODES.NORMAL;
     this.normalView = null;
     this.reducedMotion = Boolean(reducedMotion);
@@ -188,6 +252,9 @@ export class KrpanoAdapter {
               if (hotspot) this.onHotspot(hotspot);
             };
             webVrBridge = (event) => this.handleVrEvent(event);
+            sceneEventBridge = (event) => {
+              if (event.generation === this.latestGeneration) this.onSceneEvent(event);
+            };
             resolve(player);
           },
           onerror: fail
@@ -236,6 +303,24 @@ export class KrpanoAdapter {
   isVrAvailable() {
     return this.vrState === "available" || this.vrState === "entering" ||
       this.vrState === "entered";
+  }
+
+  enableGyro() {
+    if (!this.player || typeof this.player.call !== "function") return false;
+    this.player.call("gyro.enable();");
+    return true;
+  }
+
+  disableGyro() {
+    if (!this.player || typeof this.player.call !== "function") return false;
+    this.player.call("gyro.disable();");
+    return true;
+  }
+
+  isGyroAvailable() {
+    if (!this.player || typeof this.player.get !== "function") return false;
+    const available = this.player.get("plugin[gyro].isavailable");
+    return available === true || available === 1 || available === "1" || available === "true";
   }
 
   enterVr() {
@@ -321,6 +406,23 @@ export class KrpanoAdapter {
       this.latestGeneration = requestedGeneration;
   }
 
+  confirmScene(generation) {
+    if (Number(generation) !== this.latestGeneration) return false;
+    this.previousSceneState = null;
+    return true;
+  }
+
+  restorePreviousScene() {
+    const previous = this.previousSceneState;
+    if (!previous || !this.player || typeof this.player.call !== "function") return false;
+    this.player.call(`loadxml('${krpanoActionString(previous.xml)}', null, RESET);`);
+    this.currentHotspots = previous.hotspots;
+    this.currentSceneXml = previous.xml;
+    this.loaded = previous.loaded;
+    this.previousSceneState = null;
+    return true;
+  }
+
   async loadScene(scene, generation) {
     const requestedGeneration = Number(generation);
     if (!Number.isFinite(requestedGeneration) || requestedGeneration < this.latestGeneration) return false;
@@ -330,9 +432,22 @@ export class KrpanoAdapter {
 
     const preservedView = this.loaded ? this.getView() : null;
     const nextHotspots = renderableHotspots(scene);
-    const xml = buildSceneXml(scene, preservedView, this.viewMode);
+    const xml = buildSceneXml(
+      scene,
+      preservedView,
+      this.viewMode,
+      this.reducedMotion,
+      requestedGeneration
+    );
+    const previousSceneState = this.currentSceneXml ? {
+      xml: this.currentSceneXml,
+      hotspots: this.currentHotspots,
+      loaded: this.loaded
+    } : null;
     this.player.call(`loadxml('${krpanoActionString(xml)}', null, RESET);`);
+    this.previousSceneState = previousSceneState;
     this.currentHotspots = nextHotspots;
+    this.currentSceneXml = xml;
     this.loaded = true;
     return true;
   }

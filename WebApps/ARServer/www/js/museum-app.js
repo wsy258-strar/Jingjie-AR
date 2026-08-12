@@ -4,14 +4,21 @@ import { AuthSession } from "./auth-session.js";
 import { VisitorSession } from "./visitor-session.js";
 import { KrpanoAdapter } from "./krpano-adapter.js";
 import { ArtworkModal } from "./artwork-modal.js";
+import { GyroController } from "./gyro-controller.js";
 import { MuseumLifecycle } from "./museum-lifecycle.js";
 import { ModalFocusManager } from "./modal-focus.js";
 import { MuseumUiState } from "./museum-ui-state.js";
 import { SceneDissolve } from "./scene-dissolve.js";
+import { FullscreenOrientation } from "./fullscreen-orientation.js";
+import { AudioControlState } from "./audio-control-state.js";
 
 const api = new ApiClient();
+const SCENE_LOAD_TIMEOUT_MS = 15000;
 let loginWaiter = null;
 let noticeTimer = null;
+let landscapeHintTimer = null;
+let gyroController = null;
+let transientUiSuspended = false;
 
 function element(id) {
   return document.getElementById(id);
@@ -25,8 +32,24 @@ function notify(message) {
   noticeTimer = window.setTimeout(() => { notice.hidden = true; }, 4500);
 }
 
+function showLandscapeHint() {
+  const hint = element("landscape-hint");
+  hint.hidden = false;
+  window.clearTimeout(landscapeHintTimer);
+  landscapeHintTimer = window.setTimeout(() => { hint.hidden = true; }, 2500);
+}
+
+function suspendGyroForModal() {
+  gyroController?.suspend("modal");
+}
+
+function resumeGyroAfterModal() {
+  if (!modalManager.stack.length) gyroController?.resume("modal");
+}
+
 function openLogin() {
   if (loginWaiter) return loginWaiter.promise;
+  suspendGyroForModal();
   uiState.closeTransientLayers();
   const modal = element("login-modal");
   element("login-message").textContent = "";
@@ -51,13 +74,25 @@ function closeLogin(cancelled = true) {
   }
   loginWaiter = null;
   modalManager.close(element("login-modal"));
+  resumeGyroAfterModal();
 }
 
 const auth = new AuthSession({ client: api, onAuthenticationRequired: openLogin });
 const visitor = new VisitorSession({ client: api });
 const lifecycle = new MuseumLifecycle({ visitor, refreshCounters: () => app.loadCounters() });
 const modalManager = new ModalFocusManager();
-const artworkModal = new ArtworkModal({ api, auth, modalManager, notify });
+const gyroModalManager = {
+  open(...args) {
+    suspendGyroForModal();
+    return modalManager.open(...args);
+  },
+  close(...args) {
+    const closed = modalManager.close(...args);
+    resumeGyroAfterModal();
+    return closed;
+  }
+};
+const artworkModal = new ArtworkModal({ api, auth, modalManager: gyroModalManager, notify });
 
 function renderUiState(state) {
   const drawer = element("scene-drawer");
@@ -75,16 +110,15 @@ function renderUiState(state) {
   document.querySelectorAll("[data-view-mode]").forEach((button) => {
     button.setAttribute("aria-pressed", String(button.dataset.viewMode === state.viewMode));
   });
-}
 
-function setMusicButtonState(state) {
-  const button = element("music-toggle");
-  const playing = state === "playing";
-  const label = playing ? "暂停讲解" :
-    state === "unavailable" ? "当前场景暂无音乐" : "播放讲解";
-  button.classList.toggle("is-playing", playing);
-  button.setAttribute("aria-label", label);
-  button.title = label;
+  const hasTransientLayer = uiState.hasTransientLayer();
+  if (hasTransientLayer && !transientUiSuspended) {
+    gyroController?.suspend("transient-ui");
+    transientUiSuspended = true;
+  } else if (!hasTransientLayer && transientUiSuspended) {
+    gyroController?.resume("transient-ui");
+    transientUiSuspended = false;
+  }
 }
 
 export function artworkIdFromLocation(locationObject) {
@@ -99,7 +133,6 @@ export function artworkIdFromLocation(locationObject) {
 }
 
 const uiState = new MuseumUiState({ onChange: renderUiState });
-setMusicButtonState("unavailable");
 
 export class MuseumApp {
   constructor({ artworkModal: injectedArtworkModal = artworkModal, locationObject = window.location } = {}) {
@@ -112,6 +145,15 @@ export class MuseumApp {
     this.document = document;
     this.musicUrl = "";
     this.musicAutoplayRetry = null;
+    this.musicControl = new AudioControlState({
+      audio: element("scene-audio"),
+      button: element("music-toggle")
+    });
+    this.gyroAutoEnabledGeneration = null;
+    this.gyroAutoEnablingGeneration = null;
+    this.gyroGestureRequested = false;
+    this.sceneLoadTimer = null;
+    this.pendingSceneLoad = null;
     this.sceneDissolve = new SceneDissolve({
       viewer: element("panorama"),
       overlay: element("scene-dissolve")
@@ -124,8 +166,93 @@ export class MuseumApp {
       onVrStateChange: (state) => {
         element("museum-fullscreen-root").classList.toggle("is-vr-mode", state === "entered");
       },
+      onSceneEvent: ({ type, generation }) => {
+        if (generation !== this.sceneGeneration) return;
+        if (type === "preview-visible") {
+          this.clearSceneLoadTimeout(generation);
+          this.adapter.confirmScene?.(generation);
+          this.pendingSceneLoad = null;
+          this.sceneDissolve.markPreviewVisible(generation);
+          this.autoEnableGyroAfterSceneLoad(generation);
+        } else if (type === "complete") {
+          this.clearSceneLoadTimeout(generation);
+          this.adapter.confirmScene?.(generation);
+          this.pendingSceneLoad = null;
+          this.sceneDissolve.complete(generation);
+          this.autoEnableGyroAfterSceneLoad(generation);
+        }
+      },
       reducedMotion
     });
+    this.gyro = new GyroController({
+      adapter: this.adapter,
+      onDenied: () => notify("未能启用陀螺仪，仍可拖动浏览")
+    });
+    gyroController = this.gyro;
+  }
+
+  autoEnableGyroAfterSceneLoad(generation = this.sceneGeneration) {
+    if (generation !== this.sceneGeneration ||
+        this.gyroAutoEnabledGeneration === generation ||
+        this.gyroAutoEnablingGeneration === generation) return;
+    this.gyroAutoEnablingGeneration = generation;
+    Promise.resolve(this.gyro.autoEnable()).then((enabled) => {
+      if (this.gyroAutoEnablingGeneration === generation)
+        this.gyroAutoEnablingGeneration = null;
+      if (enabled && generation === this.sceneGeneration)
+        this.gyroAutoEnabledGeneration = generation;
+    }, () => {
+      if (this.gyroAutoEnablingGeneration === generation)
+        this.gyroAutoEnablingGeneration = null;
+    });
+  }
+
+  clearSceneLoadTimeout(generation = null) {
+    if (!this.sceneLoadTimer) return false;
+    if (generation !== null && this.sceneLoadTimer.generation !== generation) return false;
+    window.clearTimeout(this.sceneLoadTimer.id);
+    this.sceneLoadTimer = null;
+    return true;
+  }
+
+  startSceneLoadTimeout(generation) {
+    this.clearSceneLoadTimeout();
+    const id = window.setTimeout(() => {
+      if (generation !== this.sceneGeneration) return;
+      this.sceneLoadTimer = null;
+      this.failPendingSceneLoad(generation, "场景加载超时，已保留当前画面");
+    }, SCENE_LOAD_TIMEOUT_MS);
+    this.sceneLoadTimer = { generation, id };
+  }
+
+  failPendingSceneLoad(generation, message) {
+    if (generation !== this.sceneGeneration) return false;
+    const pending = this.pendingSceneLoad;
+    this.clearSceneLoadTimeout(generation);
+    this.sceneDissolve.cancel(generation);
+    this.adapter.restorePreviousScene?.();
+    if (pending && pending.generation === generation) {
+      this.currentScene = pending.previousScene;
+      if (this.currentScene) {
+        this.markCurrentScene(this.currentScene.sceneId);
+        this.configureMusic(this.currentScene.music);
+      }
+    }
+    this.pendingSceneLoad = null;
+    element("scene-loading").hidden = true;
+    notify(message);
+    return true;
+  }
+
+  async requestGyroFromGesture() {
+    if (this.gyroGestureRequested) return false;
+    try {
+      const enabled = await this.gyro.requestFromGesture();
+      if (enabled) this.gyroGestureRequested = true;
+      return enabled;
+    } catch (_) {
+      return false;
+    }
   }
 
   async bootstrap() {
@@ -182,11 +309,12 @@ export class MuseumApp {
 
   async switchScene(sceneId) {
     const generation = ++this.sceneGeneration;
+    this.clearSceneLoadTimeout();
     this.adapter.invalidate(generation);
     if (this.sceneController) this.sceneController.abort();
     const controller = new AbortController();
     this.sceneController = controller;
-    const shouldDissolve = Boolean(this.currentScene) && this.sceneDissolve.begin(generation);
+    this.pendingSceneLoad = { generation, previousScene: this.currentScene };
     element("scene-loading").hidden = false;
 
     try {
@@ -197,27 +325,38 @@ export class MuseumApp {
         this.sceneDissolve.cancel(generation);
         return false;
       }
+      this.sceneDissolve.begin({ generation, fallbackUrl: scene.previewUrl });
+      this.startSceneLoadTimeout(generation);
       const loaded = await this.adapter.loadScene(scene, generation);
       if (!loaded || generation !== this.sceneGeneration) {
         this.sceneDissolve.cancel(generation);
+        this.clearSceneLoadTimeout(generation);
+        if (this.pendingSceneLoad?.generation === generation) this.pendingSceneLoad = null;
         return false;
       }
+      this.autoEnableGyroAfterSceneLoad(generation);
       this.currentScene = scene;
       this.markCurrentScene(scene.sceneId);
       this.configureMusic(scene.music);
       element("scene-loading").hidden = true;
-      if (shouldDissolve) this.sceneDissolve.finish(generation);
       return true;
     } catch (error) {
       if (error && error.name === "AbortError") {
         this.sceneDissolve.cancel(generation);
+        this.clearSceneLoadTimeout(generation);
+        if (this.pendingSceneLoad?.generation === generation) this.pendingSceneLoad = null;
         return false;
       }
       if (generation !== this.sceneGeneration) {
         this.sceneDissolve.cancel(generation);
+        this.clearSceneLoadTimeout(generation);
+        if (this.pendingSceneLoad?.generation === generation) this.pendingSceneLoad = null;
         return false;
       }
       this.sceneDissolve.cancel(generation);
+      this.clearSceneLoadTimeout(generation);
+      this.adapter.restorePreviousScene?.();
+      if (this.pendingSceneLoad?.generation === generation) this.pendingSceneLoad = null;
       element("scene-loading").hidden = true;
       notify(error.message || "场景加载失败，已保留当前画面");
       return false;
@@ -242,6 +381,7 @@ export class MuseumApp {
   }
 
   handleHotspot(hotspot) {
+    if (hotspot.type === "artwork" || hotspot.type === "text") suspendGyroForModal();
     uiState.closeTransientLayers();
     if (hotspot.type === "scene" && hotspot.targetSceneId) {
       this.switchScene(hotspot.targetSceneId);
@@ -256,27 +396,23 @@ export class MuseumApp {
 
   configureMusic(music = {}) {
     const audio = element("scene-audio");
-    const button = element("music-toggle");
     const musicUrl = typeof music.url === "string" ? music.url : "";
     if (musicUrl && musicUrl === this.musicUrl && audio.src) {
       audio.volume = Math.max(0, Math.min(1, Number(music.volume) || 1));
       audio.loop = Boolean(music.loop);
-      button.disabled = false;
-      setMusicButtonState(audio.paused ? "paused" : "playing");
+      this.musicControl.sync();
       return;
     }
     this.clearMusicAutoplayRetry();
     audio.pause();
     audio.removeAttribute("src");
-    button.disabled = true;
-    setMusicButtonState("unavailable");
+    this.musicControl.setUnavailable();
     this.musicUrl = musicUrl;
     if (!musicUrl) return;
     audio.src = musicUrl;
     audio.volume = Math.max(0, Math.min(1, Number(music.volume) || 1));
     audio.loop = Boolean(music.loop);
-    button.disabled = false;
-    setMusicButtonState("paused");
+    this.musicControl.sync();
     if (music.autoplay) this.playMusic(audio, true);
   }
 
@@ -290,8 +426,9 @@ export class MuseumApp {
   playMusic(audio, retryAfterGesture) {
     return Promise.resolve().then(() => audio.play()).then(() => {
       this.clearMusicAutoplayRetry();
-      setMusicButtonState("playing");
+      this.musicControl.sync();
     }).catch(() => {
+      this.musicControl.sync();
       if (retryAfterGesture) this.armMusicAutoplayRetry(audio);
     });
   }
@@ -325,13 +462,29 @@ export class MuseumApp {
 }
 
 const app = new MuseumApp();
+const policeFilingIcon = element("police-filing-icon");
+
+function hidePoliceFilingIcon() {
+  policeFilingIcon.hidden = true;
+}
+
+if (policeFilingIcon) {
+  policeFilingIcon.addEventListener("error", hidePoliceFilingIcon, { once: true });
+  if (policeFilingIcon.complete && policeFilingIcon.naturalWidth === 0) {
+    hidePoliceFilingIcon();
+  }
+}
 
 element("description-open").addEventListener("click", () => {
+  suspendGyroForModal();
   uiState.closeTransientLayers();
   const modal = element("description-modal");
   modalManager.open(modal, {
     initialFocus: modal.querySelector(".modal-card"),
-    onEscape: () => modalManager.close(modal)
+    onEscape: () => {
+      modalManager.close(modal);
+      resumeGyroAfterModal();
+    }
   });
 });
 
@@ -361,7 +514,10 @@ document.querySelectorAll("[data-view-mode]").forEach((button) => {
 });
 
 for (const type of ["pointerdown", "wheel"]) {
-  element("panorama").addEventListener(type, () => uiState.closeTransientLayers(), {
+  element("panorama").addEventListener(type, () => {
+    uiState.closeTransientLayers();
+    if (type === "pointerdown") return app.requestGyroFromGesture();
+  }, {
     capture: true,
     passive: true
   });
@@ -375,6 +531,7 @@ document.addEventListener("keydown", (event) => {
 document.querySelectorAll('[data-close="description"]').forEach((button) => {
   button.addEventListener("click", () => {
     modalManager.close(element("description-modal"));
+    resumeGyroAfterModal();
   });
 });
 
@@ -425,33 +582,30 @@ element("music-toggle").addEventListener("click", async () => {
     try {
       await audio.play();
       app.clearMusicAutoplayRetry();
-      setMusicButtonState("playing");
+      app.musicControl.sync();
     } catch (error) {
       if (error && error.name === "AbortError") return;
       notify("浏览器未允许播放音频，请再次尝试");
     }
   } else {
     audio.pause();
-    setMusicButtonState("paused");
+    app.musicControl.sync();
   }
 });
 
-element("scene-audio").addEventListener("ended", () => {
-  setMusicButtonState("paused");
+const fullscreenOrientation = new FullscreenOrientation({
+  documentObject: document,
+  screenObject: globalThis.screen,
+  onLandscapeFallback: showLandscapeHint
 });
 
 element("fullscreen-toggle").addEventListener("click", async () => {
   const target = element("museum-fullscreen-root");
-  try {
-    if (!document.fullscreenElement) await target.requestFullscreen();
-    else await document.exitFullscreen();
-  } catch (_) {
-    notify("当前浏览器无法进入全屏模式");
-  }
+  if (!await fullscreenOrientation.toggle(target)) notify("当前浏览器无法进入全屏模式");
 });
 
 document.addEventListener("fullscreenchange", () => {
-  const active = document.fullscreenElement === element("museum-fullscreen-root");
+  const active = fullscreenOrientation.handleFullscreenChange(element("museum-fullscreen-root"));
   const button = element("fullscreen-toggle");
   button.classList.toggle("is-fullscreen", active);
   button.setAttribute("aria-label", active ? "退出全屏" : "全屏浏览");
@@ -470,6 +624,8 @@ element("retry-bootstrap").addEventListener("click", () => app.bootstrap());
 
 window.addEventListener("pagehide", () => {
   if (app.sceneController) app.sceneController.abort();
+  app.gyro.destroy();
+  app.musicControl.destroy();
 });
 
 if (auth.token()) element("login-open").textContent = "已登录 · 退出";

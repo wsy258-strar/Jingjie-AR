@@ -38,6 +38,11 @@ class FakeEventTarget {
     });
   }
 
+  removeEventListener(type, listener) {
+    if (!this.listeners.has(type)) return;
+    this.listeners.set(type, this.listeners.get(type).filter((entry) => entry.listener !== listener));
+  }
+
   async dispatch(type, init = {}) {
     const event = {
       ...init,
@@ -92,7 +97,10 @@ class FakeElement extends FakeEventTarget {
     this.disabled = false;
     this.hidden = false;
     this.paused = true;
+    this.ended = false;
     this.src = "";
+    this.complete = false;
+    this.naturalWidth = 1;
     this.title = "";
     this.type = "";
     this.value = "";
@@ -176,9 +184,11 @@ class FakeElement extends FakeEventTarget {
 
 const ELEMENT_IDS = [
   "artwork-modal", "description-modal", "description-open", "fatal-error", "fullscreen-toggle",
+  "landscape-hint",
   "login-form", "login-message", "login-modal", "login-open", "login-password",
   "login-submit", "login-username", "museum-description", "museum-fullscreen-root", "museum-shell",
   "museum-title", "music-toggle", "notice", "online-count", "panorama",
+  "police-filing-icon",
   "retry-bootstrap", "scene-audio", "scene-catalog", "scene-drawer",
   "scene-dissolve", "scene-drawer-toggle", "scene-loading", "total-views", "view-panel",
   "view-toggle", "vr-toggle"
@@ -195,7 +205,7 @@ class FakeDocument extends FakeEventTarget {
     this.elements.forEach((element) => {
       if (element !== fullscreenRoot && element !== shell) element.parentNode = shell;
     });
-    for (const id of ["description-modal", "artwork-modal", "login-modal", "notice", "fatal-error"])
+    for (const id of ["description-modal", "artwork-modal", "login-modal", "notice", "fatal-error", "landscape-hint"])
       this.getElementById(id).parentNode = fullscreenRoot;
     this.fullscreenElement = null;
     this.requestedFullscreen = null;
@@ -213,6 +223,7 @@ class FakeDocument extends FakeEventTarget {
     this.getElementById("scene-drawer").hidden = true;
     this.getElementById("view-panel").hidden = true;
     this.getElementById("notice").hidden = true;
+    this.getElementById("landscape-hint").hidden = true;
     for (const id of ["description-modal", "artwork-modal", "login-modal"])
       this.getElementById(id).setAttribute("aria-hidden", "true");
     this.getElementById("scene-drawer-toggle").setAttribute("aria-expanded", "false");
@@ -266,6 +277,10 @@ class MuseumUiStateStub {
     };
   }
 
+  hasTransientLayer() {
+    return this.sceneDrawerOpen || this.viewPanelOpen;
+  }
+
   update(next) {
     if (!Object.entries(next).some(([key, value]) => this[key] !== value)) return;
     Object.assign(this, next);
@@ -289,7 +304,11 @@ class MuseumUiStateStub {
   }
 }
 
-async function createHarness({ reducedMotion = false, locationHref = "https://example.test/" } = {}) {
+async function createHarness({
+  reducedMotion = false,
+  locationHref = "https://example.test/",
+  policeFilingIconState = null
+} = {}) {
   const directory = await mkdtemp(join(tmpdir(), "jingjie-ar-museum-wiring-"));
   const sourcePath = new URL("../../WebApps/ARServer/www/js/museum-app.js", import.meta.url);
   let source = await readFile(sourcePath, "utf8");
@@ -306,7 +325,8 @@ async function createHarness({ reducedMotion = false, locationHref = "https://ex
   source = source.replace(/^import .*;\n/gm, "");
   source = `const {
     ApiClient, ApiError, AuthSession, VisitorSession, KrpanoAdapter, ArtworkModal,
-    MuseumLifecycle, ModalFocusManager, MuseumUiState, SceneDissolve
+    MuseumLifecycle, ModalFocusManager, MuseumUiState, SceneDissolve, GyroController,
+    FullscreenOrientation, AudioControlState
   } = globalThis.__museumAppTestDeps;\n${source}`;
   source += `
 globalThis.__museumAppTestInstance = app;
@@ -322,11 +342,23 @@ globalThis.__museumVisitorSession = visitor;
     "../../WebApps/ARServer/www/js/modal-focus.js", import.meta.url
   ), "utf8"));
   const { ModalFocusManager } = await import(`${pathToFileURL(modalFocusPath).href}?case=${Math.random()}`);
+  const { AudioControlState } = await import(new URL(
+    "../../WebApps/ARServer/www/js/audio-control-state.js", import.meta.url
+  ));
 
   const document = new FakeDocument();
+  if (policeFilingIconState) {
+    Object.assign(document.getElementById("police-filing-icon"), policeFilingIconState);
+  }
   const window = new FakeEventTarget();
-  window.setTimeout = () => 1;
-  window.clearTimeout = () => {};
+  const timers = [];
+  window.setTimeout = (callback, delay) => {
+    timers.push({ callback, delay, cleared: false });
+    return timers.length;
+  };
+  window.clearTimeout = (id) => {
+    if (timers[id - 1]) timers[id - 1].cleared = true;
+  };
   window.matchMediaQueries = [];
   window.matchMedia = (query) => {
     window.matchMediaQueries.push(query);
@@ -349,7 +381,8 @@ globalThis.__museumVisitorSession = visitor;
   class ApiClient {
     async request(path) {
       if (path === "/api/scenes") return catalogPromise;
-      if (path === "/api/scenes/scene-a") return { sceneId: "scene-a", music: {} };
+      if (path === "/api/scenes/scene-a")
+        return { sceneId: "scene-a", previewUrl: "/preview-a.jpg", music: {} };
       if (path === "/api/statistics/views") {
         return { statisticsAvailable: false, totalViews: null };
       }
@@ -375,22 +408,39 @@ globalThis.__museumVisitorSession = visitor;
   class SceneDissolve {
     constructor() {
       this.beginCalls = [];
-      this.finishCalls = [];
+      this.previewCalls = [];
+      this.completeCalls = [];
       this.cancelCalls = [];
+      this.events = [];
       globalThis.__museumSceneDissolve = this;
     }
-    begin(generation) { this.beginCalls.push(generation); return true; }
-    finish(generation) { this.finishCalls.push(generation); return true; }
+    begin(options) {
+      this.beginCalls.push(options);
+      this.events.push({ type: "begin", generation: options.generation });
+      return true;
+    }
+    markPreviewVisible(generation) { this.previewCalls.push(generation); return true; }
+    complete(generation) { this.completeCalls.push(generation); return true; }
     cancel(generation) { this.cancelCalls.push(generation); return true; }
   }
   class KrpanoAdapter {
     constructor(options) {
       this.options = options;
       this.viewMode = "normal";
+      this.gyroAvailable = false;
+      this.gyroEnableCalls = 0;
+      this.gyroDisableCalls = 0;
       globalThis.__museumAppAdapter = this;
     }
     invalidate() {}
-    async loadScene() { return true; }
+    async loadScene(_scene, generation) {
+      globalThis.__museumSceneDissolve.events.push({
+        type: "loadScene", generation
+      });
+      if (this.loadError) throw this.loadError;
+      this.gyroAvailable = true;
+      return true;
+    }
     setViewMode(mode) {
       if (this.viewModeError) throw this.viewModeError;
       this.viewMode = mode;
@@ -404,10 +454,80 @@ globalThis.__museumVisitorSession = visitor;
       if (this.vrError) throw this.vrError;
       return Promise.resolve(true);
     }
+    isGyroAvailable() { return this.gyroAvailable; }
+    enableGyro() { this.gyroEnableCalls += 1; }
+    disableGyro() { this.gyroDisableCalls += 1; }
+  }
+  class GyroController {
+    constructor({ adapter, onDenied } = {}) {
+      this.adapter = adapter;
+      this.onDenied = onDenied;
+      this.autoEnableCalls = 0;
+      this.requestFromGestureCalls = 0;
+      this.suspensions = new Set();
+      this.enabled = false;
+      this.destroyCalls = 0;
+    }
+    autoEnable() {
+      this.autoEnableCalls += 1;
+      return false;
+    }
+    requestFromGesture() {
+      this.requestFromGestureCalls += 1;
+      if (!this.adapter.isGyroAvailable()) return false;
+      if (!this.enabled && !this.suspensions.size) {
+        this.adapter.enableGyro();
+        this.enabled = true;
+      }
+      return this.enabled;
+    }
+    suspend(reason) {
+      this.suspensions.add(reason);
+      if (this.enabled) {
+        this.adapter.disableGyro();
+        this.enabled = false;
+      }
+    }
+    resume(reason) {
+      this.suspensions.delete(reason);
+      if (!this.enabled && !this.suspensions.size) {
+        this.adapter.enableGyro();
+        this.enabled = true;
+      }
+      return this.enabled;
+    }
+    destroy() {
+      this.destroyCalls += 1;
+      if (this.enabled) this.adapter.disableGyro();
+      this.enabled = false;
+    }
+  }
+  class FullscreenOrientation {
+    constructor(options) {
+      this.options = options;
+      this.toggleTargets = [];
+      this.changeTargets = [];
+      globalThis.__museumFullscreenOrientations.push(this);
+    }
+
+    async toggle(target) {
+      this.toggleTargets.push(target);
+      this.options.onLandscapeFallback();
+      return true;
+    }
+
+    handleFullscreenChange(target) {
+      this.changeTargets.push(target);
+      return document.fullscreenElement === target;
+    }
   }
   class ArtworkModal {
-    open() {}
-    openText() {}
+    constructor({ modalManager } = {}) {
+      this.modalManager = modalManager;
+    }
+    open() { this.modalManager.open(document.getElementById("artwork-modal")); }
+    openText() { this.modalManager.open(document.getElementById("artwork-modal")); }
+    close() { this.modalManager.close(document.getElementById("artwork-modal")); }
   }
   const previous = {
     document: globalThis.document,
@@ -418,13 +538,16 @@ globalThis.__museumVisitorSession = visitor;
     app: globalThis.__museumAppTestInstance,
     appClass: globalThis.__museumAppTestClass,
     artworkIdFromLocation: globalThis.__museumArtworkIdFromLocation,
-    visitor: globalThis.__museumVisitorSession
+    visitor: globalThis.__museumVisitorSession,
+    fullscreenOrientations: globalThis.__museumFullscreenOrientations
   };
+  globalThis.__museumFullscreenOrientations = [];
   globalThis.document = document;
   globalThis.window = window;
   globalThis.__museumAppTestDeps = {
     ApiClient, ApiError, AuthSession, VisitorSession, KrpanoAdapter, ArtworkModal,
-    MuseumLifecycle, ModalFocusManager, MuseumUiState: MuseumUiStateStub, SceneDissolve
+    MuseumLifecycle, ModalFocusManager, MuseumUiState: MuseumUiStateStub, SceneDissolve, GyroController,
+    FullscreenOrientation, AudioControlState
   };
 
   await import(`${pathToFileURL(modulePath).href}?case=${Date.now()}-${Math.random()}`);
@@ -434,6 +557,7 @@ globalThis.__museumVisitorSession = visitor;
   const MuseumApp = globalThis.__museumAppTestClass;
   const artworkIdFromLocation = globalThis.__museumArtworkIdFromLocation;
   const visitor = globalThis.__museumVisitorSession;
+  const fullscreenOrientations = globalThis.__museumFullscreenOrientations;
 
   return {
     app,
@@ -443,6 +567,8 @@ globalThis.__museumVisitorSession = visitor;
     adapter,
     dissolve,
     document,
+    fullscreenOrientations,
+    timers,
     window,
     resolveCatalog(catalog = defaultCatalog) { resolveCatalog(catalog); },
     failCatalog(error = new Error("展馆目录加载失败")) { rejectCatalog(error); },
@@ -456,10 +582,24 @@ globalThis.__museumVisitorSession = visitor;
       globalThis.__museumAppTestClass = previous.appClass;
       globalThis.__museumArtworkIdFromLocation = previous.artworkIdFromLocation;
       globalThis.__museumVisitorSession = previous.visitor;
+      globalThis.__museumFullscreenOrientations = previous.fullscreenOrientations;
       await rm(directory, { recursive: true, force: true });
     }
   };
 }
+
+test("备案图标在脚本接线前加载失败时立即隐藏且只注册一次错误监听", async () => {
+  const harness = await createHarness({
+    policeFilingIconState: { complete: true, naturalWidth: 0 }
+  });
+  try {
+    const icon = harness.document.getElementById("police-filing-icon");
+    assert.equal(icon.hidden, true);
+    assert.equal(icon.listeners.get("error")?.length, 1);
+  } finally {
+    await harness.cleanup();
+  }
+});
 
 test("视角适配器失败时保留选择，成功后才推进 UI", async () => {
   const harness = await createHarness();
@@ -541,6 +681,84 @@ test("krpano 子节点阻止冒泡时 panorama capture 仍关闭浮层且保持 
   }
 });
 
+test("播放器真正就绪后自动启用一次，且初始化前点击不消耗后续手势权限申请", async () => {
+  const harness = await createHarness();
+  try {
+    const panorama = harness.document.getElementById("panorama");
+    await panorama.dispatch("pointerdown");
+    assert.equal(harness.adapter.isGyroAvailable(), false);
+    assert.equal(harness.app.gyro.autoEnableCalls, 0);
+    assert.equal(harness.app.gyro.requestFromGestureCalls, 1);
+    assert.equal(harness.adapter.gyroEnableCalls, 0);
+
+    await harness.app.switchScene("scene-a");
+    assert.equal(harness.adapter.isGyroAvailable(), true);
+    assert.equal(harness.app.gyro.autoEnableCalls, 1);
+
+    await panorama.dispatch("pointerdown");
+    assert.equal(harness.app.gyro.requestFromGestureCalls, 2);
+    assert.equal(harness.adapter.gyroEnableCalls, 1);
+  } finally {
+    await harness.cleanup();
+  }
+});
+
+test("抽屉和视角浮层以 transient-ui 原因暂停，关闭后恢复陀螺仪", async () => {
+  const harness = await createHarness();
+  try {
+    const drawerToggle = harness.document.getElementById("scene-drawer-toggle");
+    const viewToggle = harness.document.getElementById("view-toggle");
+    const panorama = harness.document.getElementById("panorama");
+    await harness.app.switchScene("scene-a");
+    await panorama.dispatch("pointerdown");
+    assert.equal(harness.adapter.gyroEnableCalls, 1);
+
+    await drawerToggle.dispatch("click");
+    assert.deepEqual([...harness.app.gyro.suspensions], ["transient-ui"]);
+    assert.equal(harness.adapter.gyroDisableCalls, 1);
+    await drawerToggle.dispatch("click");
+    assert.equal(harness.app.gyro.suspensions.size, 0);
+    assert.equal(harness.adapter.gyroEnableCalls, 2);
+
+    await viewToggle.dispatch("click");
+    assert.deepEqual([...harness.app.gyro.suspensions], ["transient-ui"]);
+    await panorama.dispatch("pointerdown");
+    assert.equal(harness.app.gyro.suspensions.size, 0);
+    assert.equal(harness.adapter.gyroEnableCalls, 3);
+  } finally {
+    await harness.cleanup();
+  }
+});
+
+test("作品、登录和简介模态框以 modal 原因暂停，关闭后恢复并在 pagehide 销毁", async () => {
+  const harness = await createHarness();
+  try {
+    const panorama = harness.document.getElementById("panorama");
+    await harness.app.switchScene("scene-a");
+    await panorama.dispatch("pointerdown");
+
+    harness.app.handleHotspot({ type: "artwork", artworkId: "artwork-1" });
+    assert.deepEqual([...harness.app.gyro.suspensions], ["modal"]);
+    harness.app.artworkModal.close();
+    assert.equal(harness.app.gyro.suspensions.size, 0);
+
+    await harness.document.getElementById("description-open").dispatch("click");
+    assert.deepEqual([...harness.app.gyro.suspensions], ["modal"]);
+    await harness.document.dispatch("keydown", { key: "Escape" });
+    assert.equal(harness.app.gyro.suspensions.size, 0);
+
+    await harness.document.getElementById("login-open").dispatch("click");
+    assert.deepEqual([...harness.app.gyro.suspensions], ["modal"]);
+    await harness.document.dispatch("keydown", { key: "Escape" });
+    assert.equal(harness.app.gyro.suspensions.size, 0);
+
+    await harness.window.dispatch("pagehide");
+    assert.equal(harness.app.gyro.destroyCalls, 1);
+  } finally {
+    await harness.cleanup();
+  }
+});
+
 test("展馆简介在打开模态框前关闭临时浮层", async () => {
   const harness = await createHarness();
   try {
@@ -590,17 +808,128 @@ test("所有 hotspot 分支在业务动作前统一关闭临时浮层", async ()
   }
 });
 
-test("首次加载不叠化，后续场景切换在成功后叠化旧全景快照", async () => {
+test("首次加载以预览 URL 承载，并在拿到详情后先 begin 再调用 loadScene", async () => {
   const harness = await createHarness();
   try {
     assert.ok(harness.dissolve);
     await harness.app.switchScene("scene-a");
-    assert.deepEqual(harness.dissolve.beginCalls, []);
-    assert.deepEqual(harness.dissolve.finishCalls, []);
+    assert.deepEqual(harness.dissolve.beginCalls, [{
+      generation: 1,
+      fallbackUrl: "/preview-a.jpg"
+    }]);
+    assert.deepEqual(harness.dissolve.events, [
+      { type: "begin", generation: 1 },
+      { type: "loadScene", generation: 1 }
+    ]);
+    assert.deepEqual(harness.dissolve.completeCalls, []);
+  } finally {
+    await harness.cleanup();
+  }
+});
+
+test("适配器场景事件按 generation 推进预览和完整加载状态", async () => {
+  const harness = await createHarness();
+  try {
+    await harness.app.switchScene("scene-a");
+    harness.adapter.options.onSceneEvent({ type: "preview-visible", generation: 1 });
+    harness.adapter.options.onSceneEvent({ type: "complete", generation: 1 });
+    assert.deepEqual(harness.dissolve.previewCalls, [1]);
+    assert.deepEqual(harness.dissolve.completeCalls, [1]);
+  } finally {
+    await harness.cleanup();
+  }
+});
+
+test("Gyro2 在场景预览可见后才就绪时会对当前 generation 重试自动启用", async () => {
+  const harness = await createHarness();
+  try {
+    const autoEnableGenerations = [];
+    harness.adapter.loadScene = async (_scene, generation) => {
+      harness.dissolve.events.push({ type: "loadScene", generation });
+      return true;
+    };
+    harness.app.gyro.autoEnable = () => {
+      autoEnableGenerations.push(harness.app.sceneGeneration);
+      if (!harness.adapter.isGyroAvailable()) return false;
+      harness.adapter.enableGyro();
+      return true;
+    };
 
     await harness.app.switchScene("scene-a");
-    assert.deepEqual(harness.dissolve.beginCalls, [2]);
-    assert.deepEqual(harness.dissolve.finishCalls, [2]);
+    assert.deepEqual(autoEnableGenerations, [1]);
+    assert.equal(harness.adapter.gyroEnableCalls, 0);
+
+    harness.adapter.gyroAvailable = true;
+    harness.adapter.options.onSceneEvent({ type: "preview-visible", generation: 1 });
+    await new Promise((resolve) => setImmediate(resolve));
+
+    assert.deepEqual(autoEnableGenerations, [1, 1]);
+    assert.equal(harness.adapter.gyroEnableCalls, 1);
+  } finally {
+    await harness.cleanup();
+  }
+});
+
+test("同一 generation 的陀螺仪自动启用尚未完成时，预览事件不会并发重复申请", async () => {
+  const harness = await createHarness();
+  try {
+    const autoEnableGenerations = [];
+    let resolveAutoEnable;
+    harness.app.gyro.autoEnable = () => {
+      autoEnableGenerations.push(harness.app.sceneGeneration);
+      return new Promise((resolve) => { resolveAutoEnable = resolve; });
+    };
+
+    assert.equal(await harness.app.switchScene("scene-a"), true);
+    assert.deepEqual(autoEnableGenerations, [1]);
+
+    harness.adapter.options.onSceneEvent({ type: "preview-visible", generation: 1 });
+    assert.deepEqual(autoEnableGenerations, [1]);
+
+    resolveAutoEnable(false);
+    await new Promise((resolve) => setImmediate(resolve));
+    harness.adapter.options.onSceneEvent({ type: "preview-visible", generation: 1 });
+    assert.deepEqual(autoEnableGenerations, [1, 1]);
+  } finally {
+    await harness.cleanup();
+  }
+});
+
+test("场景加载失败时取消当前叠化并清理 loading 状态", async () => {
+  const harness = await createHarness();
+  try {
+    harness.adapter.loadError = new Error("loadxml failed");
+    assert.equal(await harness.app.switchScene("scene-a"), false);
+    assert.deepEqual(harness.dissolve.beginCalls, [{
+      generation: 1,
+      fallbackUrl: "/preview-a.jpg"
+    }]);
+    assert.deepEqual(harness.dissolve.cancelCalls, [1]);
+    assert.equal(harness.document.getElementById("scene-loading").hidden, true);
+    assert.match(harness.document.getElementById("notice").textContent, /loadxml failed/);
+  } finally {
+    await harness.cleanup();
+  }
+});
+
+test("当前场景超过 15 秒受控加载时限时撤销叠化、恢复旧场景并提示用户", async () => {
+  const harness = await createHarness();
+  try {
+    let restoreCalls = 0;
+    harness.adapter.restorePreviousScene = () => {
+      restoreCalls += 1;
+      return true;
+    };
+
+    assert.equal(await harness.app.switchScene("scene-a"), true);
+    const timeout = harness.timers.find((timer) => timer.delay === 15000);
+    assert.ok(timeout, "应为当前场景设置受控加载超时");
+    timeout.callback();
+
+    assert.deepEqual(harness.dissolve.cancelCalls, [1]);
+    assert.equal(restoreCalls, 1);
+    assert.equal(harness.document.getElementById("scene-loading").hidden, true);
+    assert.match(harness.document.getElementById("notice").textContent, /场景加载超时/);
   } finally {
     await harness.cleanup();
   }
@@ -628,6 +957,30 @@ test("音乐状态更新保留按钮中的 SVG 子节点", async () => {
   }
 });
 
+test("音乐按钮只由音频真实状态同步，不在 click 后猜测播放结果", async () => {
+  const harness = await createHarness();
+  try {
+    const button = harness.document.getElementById("music-toggle");
+    const audio = harness.document.getElementById("scene-audio");
+    harness.app.configureMusic({ url: "/audio/guide.mp3" });
+
+    audio.play = async () => {};
+    await button.dispatch("click");
+    assert.equal(button.classList.contains("is-playing"), false);
+    assert.equal(button.title, "播放讲解");
+
+    audio.paused = false;
+    await audio.dispatch("play");
+    assert.equal(button.classList.contains("is-playing"), true);
+
+    audio.paused = true;
+    await audio.dispatch("error");
+    assert.equal(button.classList.contains("is-playing"), false);
+  } finally {
+    await harness.cleanup();
+  }
+});
+
 test("共同全屏根包含业务层，打开 modal 只 inert shell 且 modal 保持可见", async () => {
   const harness = await createHarness();
   try {
@@ -635,14 +988,16 @@ test("共同全屏根包含业务层，打开 modal 只 inert shell 且 modal �
     const shell = harness.document.getElementById("museum-shell");
     const button = harness.document.getElementById("fullscreen-toggle");
     const modal = harness.document.getElementById("description-modal");
-    for (const id of ["description-modal", "artwork-modal", "login-modal", "notice", "fatal-error"])
+    const [orientation] = harness.fullscreenOrientations;
+    for (const id of ["description-modal", "artwork-modal", "login-modal", "notice", "fatal-error", "landscape-hint"])
       assert.equal(root.contains(harness.document.getElementById(id)), true, `${id} 应在全屏根内`);
 
     await button.dispatch("click");
-    assert.equal(harness.document.requestedFullscreen, root);
+    assert.deepEqual(orientation.toggleTargets, [root]);
 
     harness.document.fullscreenElement = root;
     await harness.document.dispatch("fullscreenchange");
+    assert.deepEqual(orientation.changeTargets, [root]);
     assert.equal(button.classList.contains("is-fullscreen"), true);
     assert.equal(button.getAttribute("aria-label"), "退出全屏");
 
@@ -657,6 +1012,24 @@ test("共同全屏根包含业务层，打开 modal 只 inert shell 且 modal �
     await harness.document.dispatch("fullscreenchange");
     assert.equal(button.classList.contains("is-fullscreen"), false);
     assert.equal(button.getAttribute("aria-label"), "全屏浏览");
+  } finally {
+    await harness.cleanup();
+  }
+});
+
+test("横屏锁定降级会显示提示并在 2.5 秒后隐藏", async () => {
+  const harness = await createHarness();
+  try {
+    const hint = harness.document.getElementById("landscape-hint");
+    const button = harness.document.getElementById("fullscreen-toggle");
+
+    await button.dispatch("click");
+
+    assert.equal(hint.hidden, false);
+    const hintTimer = harness.timers.at(-1);
+    assert.equal(hintTimer.delay, 2500);
+    hintTimer.callback();
+    assert.equal(hint.hidden, true);
   } finally {
     await harness.cleanup();
   }
