@@ -150,6 +150,7 @@ export class MuseumApp {
       button: element("music-toggle")
     });
     this.gyroAutoEnabledGeneration = null;
+    this.gyroAutoEnablingGeneration = null;
     this.gyroGestureRequested = false;
     this.sceneLoadTimer = null;
     this.pendingSceneLoad = null;
@@ -179,8 +180,6 @@ export class MuseumApp {
           this.pendingSceneLoad = null;
           this.sceneDissolve.complete(generation);
           this.autoEnableGyroAfterSceneLoad(generation);
-        } else if (type === "error") {
-          this.failPendingSceneLoad(generation, "场景加载失败，已保留当前画面");
         }
       },
       reducedMotion
@@ -193,11 +192,19 @@ export class MuseumApp {
   }
 
   autoEnableGyroAfterSceneLoad(generation = this.sceneGeneration) {
-    if (generation !== this.sceneGeneration || this.gyroAutoEnabledGeneration === generation) return;
+    if (generation !== this.sceneGeneration ||
+        this.gyroAutoEnabledGeneration === generation ||
+        this.gyroAutoEnablingGeneration === generation) return;
+    this.gyroAutoEnablingGeneration = generation;
     Promise.resolve(this.gyro.autoEnable()).then((enabled) => {
+      if (this.gyroAutoEnablingGeneration === generation)
+        this.gyroAutoEnablingGeneration = null;
       if (enabled && generation === this.sceneGeneration)
         this.gyroAutoEnabledGeneration = generation;
-    }).catch(() => {});
+    }, () => {
+      if (this.gyroAutoEnablingGeneration === generation)
+        this.gyroAutoEnablingGeneration = null;
+    });
   }
 
   clearSceneLoadTimeout(generation = null) {

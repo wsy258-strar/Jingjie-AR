@@ -861,10 +861,35 @@ test("Gyro2 在场景预览可见后才就绪时会对当前 generation 重试�
 
     harness.adapter.gyroAvailable = true;
     harness.adapter.options.onSceneEvent({ type: "preview-visible", generation: 1 });
-    await Promise.resolve();
+    await new Promise((resolve) => setImmediate(resolve));
 
     assert.deepEqual(autoEnableGenerations, [1, 1]);
     assert.equal(harness.adapter.gyroEnableCalls, 1);
+  } finally {
+    await harness.cleanup();
+  }
+});
+
+test("同一 generation 的陀螺仪自动启用尚未完成时，预览事件不会并发重复申请", async () => {
+  const harness = await createHarness();
+  try {
+    const autoEnableGenerations = [];
+    let resolveAutoEnable;
+    harness.app.gyro.autoEnable = () => {
+      autoEnableGenerations.push(harness.app.sceneGeneration);
+      return new Promise((resolve) => { resolveAutoEnable = resolve; });
+    };
+
+    assert.equal(await harness.app.switchScene("scene-a"), true);
+    assert.deepEqual(autoEnableGenerations, [1]);
+
+    harness.adapter.options.onSceneEvent({ type: "preview-visible", generation: 1 });
+    assert.deepEqual(autoEnableGenerations, [1]);
+
+    resolveAutoEnable(false);
+    await new Promise((resolve) => setImmediate(resolve));
+    harness.adapter.options.onSceneEvent({ type: "preview-visible", generation: 1 });
+    assert.deepEqual(autoEnableGenerations, [1, 1]);
   } finally {
     await harness.cleanup();
   }
@@ -887,31 +912,7 @@ test("场景加载失败时取消当前叠化并清理 loading 状态", async ()
   }
 });
 
-test("当前场景发出加载失败事件时撤销叠化、恢复旧场景并提示用户", async () => {
-  const harness = await createHarness();
-  try {
-    const previousScene = { sceneId: "old-scene", music: {} };
-    let restoreCalls = 0;
-    harness.app.currentScene = previousScene;
-    harness.adapter.restorePreviousScene = () => {
-      restoreCalls += 1;
-      return true;
-    };
-
-    assert.equal(await harness.app.switchScene("scene-a"), true);
-    harness.adapter.options.onSceneEvent({ type: "error", generation: 1 });
-
-    assert.deepEqual(harness.dissolve.cancelCalls, [1]);
-    assert.equal(restoreCalls, 1);
-    assert.equal(harness.app.currentScene, previousScene);
-    assert.equal(harness.document.getElementById("scene-loading").hidden, true);
-    assert.match(harness.document.getElementById("notice").textContent, /场景加载失败/);
-  } finally {
-    await harness.cleanup();
-  }
-});
-
-test("当前场景超过受控加载时限时撤销叠化并提示用户", async () => {
+test("当前场景超过 15 秒受控加载时限时撤销叠化、恢复旧场景并提示用户", async () => {
   const harness = await createHarness();
   try {
     let restoreCalls = 0;
