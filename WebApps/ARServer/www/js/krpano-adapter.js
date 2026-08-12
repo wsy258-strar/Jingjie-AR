@@ -208,6 +208,8 @@ export class KrpanoAdapter {
     this.latestGeneration = -1;
     this.loaded = false;
     this.currentHotspots = [];
+    this.currentSceneXml = "";
+    this.previousSceneState = null;
     this.viewMode = VIEW_MODES.NORMAL;
     this.normalView = null;
     this.reducedMotion = Boolean(reducedMotion);
@@ -404,6 +406,23 @@ export class KrpanoAdapter {
       this.latestGeneration = requestedGeneration;
   }
 
+  confirmScene(generation) {
+    if (Number(generation) !== this.latestGeneration) return false;
+    this.previousSceneState = null;
+    return true;
+  }
+
+  restorePreviousScene() {
+    const previous = this.previousSceneState;
+    if (!previous || !this.player || typeof this.player.call !== "function") return false;
+    this.player.call(`loadxml('${krpanoActionString(previous.xml)}', null, RESET);`);
+    this.currentHotspots = previous.hotspots;
+    this.currentSceneXml = previous.xml;
+    this.loaded = previous.loaded;
+    this.previousSceneState = null;
+    return true;
+  }
+
   async loadScene(scene, generation) {
     const requestedGeneration = Number(generation);
     if (!Number.isFinite(requestedGeneration) || requestedGeneration < this.latestGeneration) return false;
@@ -420,8 +439,15 @@ export class KrpanoAdapter {
       this.reducedMotion,
       requestedGeneration
     );
+    const previousSceneState = this.currentSceneXml ? {
+      xml: this.currentSceneXml,
+      hotspots: this.currentHotspots,
+      loaded: this.loaded
+    } : null;
     this.player.call(`loadxml('${krpanoActionString(xml)}', null, RESET);`);
+    this.previousSceneState = previousSceneState;
     this.currentHotspots = nextHotspots;
+    this.currentSceneXml = xml;
     this.loaded = true;
     return true;
   }

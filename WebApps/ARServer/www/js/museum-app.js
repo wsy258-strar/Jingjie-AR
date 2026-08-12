@@ -13,6 +13,7 @@ import { FullscreenOrientation } from "./fullscreen-orientation.js";
 import { AudioControlState } from "./audio-control-state.js";
 
 const api = new ApiClient();
+const SCENE_LOAD_TIMEOUT_MS = 15000;
 let loginWaiter = null;
 let noticeTimer = null;
 let landscapeHintTimer = null;
@@ -148,8 +149,10 @@ export class MuseumApp {
       audio: element("scene-audio"),
       button: element("music-toggle")
     });
-    this.gyroAutoEnableRequested = false;
+    this.gyroAutoEnabledGeneration = null;
     this.gyroGestureRequested = false;
+    this.sceneLoadTimer = null;
+    this.pendingSceneLoad = null;
     this.sceneDissolve = new SceneDissolve({
       viewer: element("panorama"),
       overlay: element("scene-dissolve")
@@ -163,8 +166,22 @@ export class MuseumApp {
         element("museum-fullscreen-root").classList.toggle("is-vr-mode", state === "entered");
       },
       onSceneEvent: ({ type, generation }) => {
-        if (type === "preview-visible") this.sceneDissolve.markPreviewVisible(generation);
-        else if (type === "complete") this.sceneDissolve.complete(generation);
+        if (generation !== this.sceneGeneration) return;
+        if (type === "preview-visible") {
+          this.clearSceneLoadTimeout(generation);
+          this.adapter.confirmScene?.(generation);
+          this.pendingSceneLoad = null;
+          this.sceneDissolve.markPreviewVisible(generation);
+          this.autoEnableGyroAfterSceneLoad(generation);
+        } else if (type === "complete") {
+          this.clearSceneLoadTimeout(generation);
+          this.adapter.confirmScene?.(generation);
+          this.pendingSceneLoad = null;
+          this.sceneDissolve.complete(generation);
+          this.autoEnableGyroAfterSceneLoad(generation);
+        } else if (type === "error") {
+          this.failPendingSceneLoad(generation, "场景加载失败，已保留当前画面");
+        }
       },
       reducedMotion
     });
@@ -175,10 +192,49 @@ export class MuseumApp {
     gyroController = this.gyro;
   }
 
-  autoEnableGyroAfterSceneLoad() {
-    if (this.gyroAutoEnableRequested) return;
-    this.gyroAutoEnableRequested = true;
-    Promise.resolve(this.gyro.autoEnable()).catch(() => {});
+  autoEnableGyroAfterSceneLoad(generation = this.sceneGeneration) {
+    if (generation !== this.sceneGeneration || this.gyroAutoEnabledGeneration === generation) return;
+    Promise.resolve(this.gyro.autoEnable()).then((enabled) => {
+      if (enabled && generation === this.sceneGeneration)
+        this.gyroAutoEnabledGeneration = generation;
+    }).catch(() => {});
+  }
+
+  clearSceneLoadTimeout(generation = null) {
+    if (!this.sceneLoadTimer) return false;
+    if (generation !== null && this.sceneLoadTimer.generation !== generation) return false;
+    window.clearTimeout(this.sceneLoadTimer.id);
+    this.sceneLoadTimer = null;
+    return true;
+  }
+
+  startSceneLoadTimeout(generation) {
+    this.clearSceneLoadTimeout();
+    const id = window.setTimeout(() => {
+      if (generation !== this.sceneGeneration) return;
+      this.sceneLoadTimer = null;
+      this.failPendingSceneLoad(generation, "场景加载超时，已保留当前画面");
+    }, SCENE_LOAD_TIMEOUT_MS);
+    this.sceneLoadTimer = { generation, id };
+  }
+
+  failPendingSceneLoad(generation, message) {
+    if (generation !== this.sceneGeneration) return false;
+    const pending = this.pendingSceneLoad;
+    this.clearSceneLoadTimeout(generation);
+    this.sceneDissolve.cancel(generation);
+    this.adapter.restorePreviousScene?.();
+    if (pending && pending.generation === generation) {
+      this.currentScene = pending.previousScene;
+      if (this.currentScene) {
+        this.markCurrentScene(this.currentScene.sceneId);
+        this.configureMusic(this.currentScene.music);
+      }
+    }
+    this.pendingSceneLoad = null;
+    element("scene-loading").hidden = true;
+    notify(message);
+    return true;
   }
 
   async requestGyroFromGesture() {
@@ -246,10 +302,12 @@ export class MuseumApp {
 
   async switchScene(sceneId) {
     const generation = ++this.sceneGeneration;
+    this.clearSceneLoadTimeout();
     this.adapter.invalidate(generation);
     if (this.sceneController) this.sceneController.abort();
     const controller = new AbortController();
     this.sceneController = controller;
+    this.pendingSceneLoad = { generation, previousScene: this.currentScene };
     element("scene-loading").hidden = false;
 
     try {
@@ -261,12 +319,15 @@ export class MuseumApp {
         return false;
       }
       this.sceneDissolve.begin({ generation, fallbackUrl: scene.previewUrl });
+      this.startSceneLoadTimeout(generation);
       const loaded = await this.adapter.loadScene(scene, generation);
       if (!loaded || generation !== this.sceneGeneration) {
         this.sceneDissolve.cancel(generation);
+        this.clearSceneLoadTimeout(generation);
+        if (this.pendingSceneLoad?.generation === generation) this.pendingSceneLoad = null;
         return false;
       }
-      this.autoEnableGyroAfterSceneLoad();
+      this.autoEnableGyroAfterSceneLoad(generation);
       this.currentScene = scene;
       this.markCurrentScene(scene.sceneId);
       this.configureMusic(scene.music);
@@ -275,13 +336,20 @@ export class MuseumApp {
     } catch (error) {
       if (error && error.name === "AbortError") {
         this.sceneDissolve.cancel(generation);
+        this.clearSceneLoadTimeout(generation);
+        if (this.pendingSceneLoad?.generation === generation) this.pendingSceneLoad = null;
         return false;
       }
       if (generation !== this.sceneGeneration) {
         this.sceneDissolve.cancel(generation);
+        this.clearSceneLoadTimeout(generation);
+        if (this.pendingSceneLoad?.generation === generation) this.pendingSceneLoad = null;
         return false;
       }
       this.sceneDissolve.cancel(generation);
+      this.clearSceneLoadTimeout(generation);
+      this.adapter.restorePreviousScene?.();
+      if (this.pendingSceneLoad?.generation === generation) this.pendingSceneLoad = null;
       element("scene-loading").hidden = true;
       notify(error.message || "场景加载失败，已保留当前画面");
       return false;
