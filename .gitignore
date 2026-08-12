@@ -25,6 +25,10 @@ logs/
 *.swo
 *~
 .cache/
+.codex/
+.superpowers/
+.claude/
+.agents/
 
 # ==================== 文档与测试文件（不上传） ====================
 docs/
