@@ -98,16 +98,44 @@ test("场景与展品热点分别注册循环引导动效，并在点击前停�
 
   assert.match(xml, /<action name="scene_hotspot_pulse">/);
   assert.match(xml, /<action name="artwork_hotspot_pulse">/);
-  assert.match(xml, /hotspot\[get\(caller\.name\)\]/);
-  assert.match(xml, /tween\(caller\.scale,1\.14,0\.75/);
-  assert.match(xml, /tween\(caller\.alpha,0\.65,0\.75/);
-  assert.match(xml, /tween\(caller\.oy,-12,0\.75/);
-  assert.match(xml, /tween\(caller\.scale,1\.12,0\.55,default, tween\(caller\.scale,1,0\.55\)\)/);
-  assert.match(xml, /tween\(caller\.alpha,1,0\.55,default, tween\(caller\.alpha,0\.85,0\.55/);
-  assert.match(xml, /onloaded="scene_hotspot_pulse\(\);"/);
-  assert.match(xml, /onloaded="artwork_hotspot_pulse\(\);"/);
+  assert.match(xml, /hotspot\[%1\]/);
+  assert.match(xml, /onloaded="scene_hotspot_pulse\(get\(name\)\);"/);
+  assert.match(xml, /onloaded="artwork_hotspot_pulse\(get\(name\)\);"/);
+  const actionsXml = xml.match(/<action name="scene_hotspot_pulse">[\s\S]*?<\/action><action name="artwork_hotspot_pulse">[\s\S]*?<\/action>/)?.[0] || "";
+  assert.doesNotMatch(actionsXml, /tween\(caller\./);
+
+  const sceneAction = xml.match(
+    /<action name="scene_hotspot_pulse"><!\[CDATA\[([\s\S]*?)\]\]><\/action>/
+  )?.[1] || "";
+  assert.match(sceneAction, /tween\(hotspot\[%1\]\.oy,-18,0\.6/);
+  assert.match(sceneAction, /tween\(hotspot\[%1\]\.oy,0,0\.6/);
+  assert.doesNotMatch(sceneAction, /\.scale/);
+  assert.doesNotMatch(sceneAction, /\.alpha/);
+
+  const artworkAction = xml.match(
+    /<action name="artwork_hotspot_pulse"><!\[CDATA\[([\s\S]*?)\]\]><\/action>/
+  )?.[1] || "";
+  assert.match(artworkAction, /tween\(hotspot\[%1\]\.scale,1\.26,0\.6/);
+  assert.match(artworkAction, /tween\(hotspot\[%1\]\.scale,1,0\.6/);
+  assert.match(artworkAction, /tween\(hotspot\[%1\]\.alpha,1,0\.6/);
+  assert.match(artworkAction, /tween\(hotspot\[%1\]\.alpha,0\.82,0\.6/);
+  assert.match(artworkAction, /tween\(hotspot\[%1\]\.oy,-7,0\.6/);
+  assert.match(artworkAction, /tween\(hotspot\[%1\]\.oy,0,0\.6/);
   assert.match(xml, /onclick="stoptween\(caller\.scale\); stoptween\(caller\.alpha\); stoptween\(caller\.oy\); js\(JingjieARHotspotBridge\(0\)\);"/);
   assert.match(xml, /onclick="stoptween\(caller\.scale\); stoptween\(caller\.alpha\); stoptween\(caller\.oy\); js\(JingjieARHotspotBridge\(1\)\);"/);
+
+  for (const actionName of ["scene_hotspot_pulse", "artwork_hotspot_pulse"]) {
+    const actionBody = xml.match(
+      new RegExp(`<action name="${actionName}"><!\\[CDATA\\[([\\s\\S]*?)\\]\\]></action>`)
+    )?.[1] || "";
+    const openingParentheses = (actionBody.match(/\(/g) || []).length;
+    const closingParentheses = (actionBody.match(/\)/g) || []).length;
+    assert.equal(
+      openingParentheses,
+      closingParentheses,
+      `${actionName} 的 krpano action 括号必须闭合`
+    );
+  }
 });
 
 test("reduced motion 场景不输出热点循环，但保留可点击热点", () => {

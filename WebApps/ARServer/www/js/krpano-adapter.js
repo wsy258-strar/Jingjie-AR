@@ -117,22 +117,22 @@ export function buildSceneXml(
   const shouldReduceMotion = Boolean(reducedMotion);
   const hotspotPulseActions = shouldReduceMotion ? "" : [
     '<action name="scene_hotspot_pulse"><![CDATA[',
-    'if(hotspot[get(caller.name)], ',
-    'tween(caller.scale,1.14,0.75); ',
-    'tween(caller.alpha,0.65,0.75); ',
-    'tween(caller.oy,-12,0.75,default, ',
-    'if(hotspot[get(caller.name)], ',
-    'set(caller.scale,1); set(caller.alpha,1); set(caller.oy,0); scene_hotspot_pulse();',
+    'if(hotspot[%1], ',
+    'tween(hotspot[%1].oy,-18,0.6,default, ',
+    'tween(hotspot[%1].oy,0,0.6,default, ',
+    'if(hotspot[%1], scene_hotspot_pulse(%1););',
     ');',
     ');',
     ');',
     ']]></action>',
     '<action name="artwork_hotspot_pulse"><![CDATA[',
-    'if(hotspot[get(caller.name)], ',
-    'tween(caller.scale,1.12,0.55,default, tween(caller.scale,1,0.55)); ',
-    'tween(caller.alpha,1,0.55,default, ',
-    'tween(caller.alpha,0.85,0.55,default, ',
-    'if(hotspot[get(caller.name)], artwork_hotspot_pulse(););',
+    'if(hotspot[%1], ',
+    'tween(hotspot[%1].scale,1.26,0.6,default, tween(hotspot[%1].scale,1,0.6)); ',
+    'tween(hotspot[%1].alpha,1,0.6,default, tween(hotspot[%1].alpha,0.82,0.6)); ',
+    'tween(hotspot[%1].oy,-7,0.6,default, ',
+    'tween(hotspot[%1].oy,0,0.6,default, ',
+    'if(hotspot[%1], artwork_hotspot_pulse(%1););',
+    ');',
     ');',
     ');',
     ']]></action>'
@@ -141,8 +141,8 @@ export function buildSceneXml(
     const hotspotType = hotspot.type;
     const animated = hotspotType === "scene" || hotspotType === "artwork";
     const onloaded = !shouldReduceMotion && animated ?
-      ` onloaded="${hotspotType}_hotspot_pulse();"` : "";
-    const alpha = hotspotType === "artwork" ? ' alpha="0.85"' : "";
+      ` onloaded="${hotspotType}_hotspot_pulse(get(name));"` : "";
+    const alpha = hotspotType === "artwork" ? ' alpha="0.82"' : "";
     const onclick = animated ?
       `stoptween(caller.scale); stoptween(caller.alpha); stoptween(caller.oy); js(JingjieARHotspotBridge(${index}));` :
       `js(JingjieARHotspotBridge(${index}));`;
