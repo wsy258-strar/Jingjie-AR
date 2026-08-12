@@ -34,6 +34,8 @@ benchmark/framework_overhead.sh
 
 # ==================== 测试文件（不上传） ====================
 
+img/beian_icon.png
+
 # ==================== 操作系统生成文件 ====================
 .DS_Store
 Thumbs.db
