@@ -325,7 +325,7 @@ async function createHarness({
   source = source.replace(/^import .*;\n/gm, "");
   source = `const {
     ApiClient, ApiError, AuthSession, VisitorSession, KrpanoAdapter, ArtworkModal,
-    MuseumLifecycle, ModalFocusManager, MuseumUiState, SceneDissolve, GyroController,
+    MuseumLifecycle, ModalFocusManager, MuseumUiState, SceneDissolve, GyroController, isMobileDevice,
     FullscreenOrientation, AudioControlState
   } = globalThis.__museumAppTestDeps;\n${source}`;
   source += `
@@ -365,6 +365,10 @@ globalThis.__museumVisitorSession = visitor;
     return { matches: reducedMotion };
   };
   window.location = { href: locationHref };
+  window.navigator = {
+    userAgentData: { mobile: false },
+    userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+  };
 
   let resolveCatalog;
   let rejectCatalog;
@@ -458,9 +462,10 @@ globalThis.__museumVisitorSession = visitor;
     disableGyro() { this.gyroDisableCalls += 1; }
   }
   class GyroController {
-    constructor({ adapter, onDenied } = {}) {
+    constructor({ adapter, onDenied, notifyUnavailable } = {}) {
       this.adapter = adapter;
       this.onDenied = onDenied;
+      this.notifyUnavailable = notifyUnavailable;
       this.autoEnableCalls = 0;
       this.requestFromGestureCalls = 0;
       this.pluginStates = [];
@@ -559,6 +564,7 @@ globalThis.__museumVisitorSession = visitor;
   globalThis.__museumAppTestDeps = {
     ApiClient, ApiError, AuthSession, VisitorSession, KrpanoAdapter, ArtworkModal,
     MuseumLifecycle, ModalFocusManager, MuseumUiState: MuseumUiStateStub, SceneDissolve, GyroController,
+    isMobileDevice: (navigatorObject) => Boolean(navigatorObject?.userAgentData?.mobile),
     FullscreenOrientation, AudioControlState
   };
 
@@ -608,6 +614,15 @@ test("备案图标在脚本接线前加载失败时立即隐藏且只注册一�
     const icon = harness.document.getElementById("police-filing-icon");
     assert.equal(icon.hidden, true);
     assert.equal(icon.listeners.get("error")?.length, 1);
+  } finally {
+    await harness.cleanup();
+  }
+});
+
+test("PC navigator 向陀螺仪控制器注入静默 unavailable 策略", async () => {
+  const harness = await createHarness();
+  try {
+    assert.equal(harness.app.gyro.notifyUnavailable, false);
   } finally {
     await harness.cleanup();
   }
