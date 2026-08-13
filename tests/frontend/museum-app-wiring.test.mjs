@@ -438,7 +438,6 @@ globalThis.__museumVisitorSession = visitor;
         type: "loadScene", generation
       });
       if (this.loadError) throw this.loadError;
-      this.gyroAvailable = true;
       return true;
     }
     setViewMode(mode) {
@@ -464,6 +463,7 @@ globalThis.__museumVisitorSession = visitor;
       this.onDenied = onDenied;
       this.autoEnableCalls = 0;
       this.requestFromGestureCalls = 0;
+      this.pluginStates = [];
       this.suspensions = new Set();
       this.enabled = false;
       this.destroyCalls = 0;
@@ -478,6 +478,18 @@ globalThis.__museumVisitorSession = visitor;
       if (!this.enabled && !this.suspensions.size) {
         this.adapter.enableGyro();
         this.enabled = true;
+      }
+      return this.enabled;
+    }
+    handlePluginState(state) {
+      this.pluginStates.push(state);
+      this.adapter.gyroAvailable = state === "available";
+      if (state === "available" && !this.enabled && !this.suspensions.size) {
+        this.adapter.enableGyro();
+        this.enabled = true;
+      } else if (state === "unavailable" && this.enabled) {
+        this.adapter.disableGyro();
+        this.enabled = false;
       }
       return this.enabled;
     }
@@ -681,7 +693,7 @@ test("krpano 子节点阻止冒泡时 panorama capture 仍关闭浮层且保持 
   }
 });
 
-test("播放器真正就绪后自动启用一次，且初始化前点击不消耗后续手势权限申请", async () => {
+test("插件就绪前后的 pointerdown 均转发权限申请，available 事件负责启用", async () => {
   const harness = await createHarness();
   try {
     const panorama = harness.document.getElementById("panorama");
@@ -692,11 +704,16 @@ test("播放器真正就绪后自动启用一次，且初始化前点击不消�
     assert.equal(harness.adapter.gyroEnableCalls, 0);
 
     await harness.app.switchScene("scene-a");
-    assert.equal(harness.adapter.isGyroAvailable(), true);
-    assert.equal(harness.app.gyro.autoEnableCalls, 1);
+    assert.equal(harness.adapter.isGyroAvailable(), false);
+    assert.equal(harness.app.gyro.autoEnableCalls, 0);
+    assert.equal(harness.adapter.gyroEnableCalls, 0);
 
     await panorama.dispatch("pointerdown");
     assert.equal(harness.app.gyro.requestFromGestureCalls, 2);
+    assert.equal(harness.adapter.gyroEnableCalls, 0);
+
+    harness.adapter.options.onGyroStateChange("available");
+    assert.deepEqual(harness.app.gyro.pluginStates, ["available"]);
     assert.equal(harness.adapter.gyroEnableCalls, 1);
   } finally {
     await harness.cleanup();
@@ -710,6 +727,7 @@ test("抽屉和视角浮层以 transient-ui 原因暂停，关闭后恢复陀螺
     const viewToggle = harness.document.getElementById("view-toggle");
     const panorama = harness.document.getElementById("panorama");
     await harness.app.switchScene("scene-a");
+    harness.adapter.options.onGyroStateChange("available");
     await panorama.dispatch("pointerdown");
     assert.equal(harness.adapter.gyroEnableCalls, 1);
 
@@ -735,6 +753,7 @@ test("作品、登录和简介模态框以 modal 原因暂停，关闭后恢复�
   try {
     const panorama = harness.document.getElementById("panorama");
     await harness.app.switchScene("scene-a");
+    harness.adapter.options.onGyroStateChange("available");
     await panorama.dispatch("pointerdown");
 
     harness.app.handleHotspot({ type: "artwork", artworkId: "artwork-1" });
@@ -840,56 +859,31 @@ test("适配器场景事件按 generation 推进预览和完整加载状态", as
   }
 });
 
-test("Gyro2 在场景预览可见后才就绪时会对当前 generation 重试自动启用", async () => {
+test("Gyro2 available 独立于场景图片事件驱动自动启用", async () => {
   const harness = await createHarness();
   try {
-    const autoEnableGenerations = [];
-    harness.adapter.loadScene = async (_scene, generation) => {
-      harness.dissolve.events.push({ type: "loadScene", generation });
-      return true;
-    };
-    harness.app.gyro.autoEnable = () => {
-      autoEnableGenerations.push(harness.app.sceneGeneration);
-      if (!harness.adapter.isGyroAvailable()) return false;
-      harness.adapter.enableGyro();
-      return true;
-    };
-
     await harness.app.switchScene("scene-a");
-    assert.deepEqual(autoEnableGenerations, [1]);
-    assert.equal(harness.adapter.gyroEnableCalls, 0);
-
-    harness.adapter.gyroAvailable = true;
+    assert.equal(harness.app.gyro.autoEnableCalls, 0);
     harness.adapter.options.onSceneEvent({ type: "preview-visible", generation: 1 });
-    await new Promise((resolve) => setImmediate(resolve));
-
-    assert.deepEqual(autoEnableGenerations, [1, 1]);
+    assert.equal(harness.app.gyro.autoEnableCalls, 0);
+    harness.adapter.options.onGyroStateChange("available");
+    assert.deepEqual(harness.app.gyro.pluginStates, ["available"]);
     assert.equal(harness.adapter.gyroEnableCalls, 1);
   } finally {
     await harness.cleanup();
   }
 });
 
-test("同一 generation 的陀螺仪自动启用尚未完成时，预览事件不会并发重复申请", async () => {
+test("插件未 available 时首次 panorama pointerdown 仍转发权限申请", async () => {
   const harness = await createHarness();
   try {
-    const autoEnableGenerations = [];
-    let resolveAutoEnable;
-    harness.app.gyro.autoEnable = () => {
-      autoEnableGenerations.push(harness.app.sceneGeneration);
-      return new Promise((resolve) => { resolveAutoEnable = resolve; });
-    };
-
-    assert.equal(await harness.app.switchScene("scene-a"), true);
-    assert.deepEqual(autoEnableGenerations, [1]);
-
-    harness.adapter.options.onSceneEvent({ type: "preview-visible", generation: 1 });
-    assert.deepEqual(autoEnableGenerations, [1]);
-
-    resolveAutoEnable(false);
-    await new Promise((resolve) => setImmediate(resolve));
-    harness.adapter.options.onSceneEvent({ type: "preview-visible", generation: 1 });
-    assert.deepEqual(autoEnableGenerations, [1, 1]);
+    const panorama = harness.document.getElementById("panorama");
+    await panorama.dispatch("pointerdown");
+    assert.equal(harness.app.gyro.requestFromGestureCalls, 1);
+    assert.equal(harness.adapter.gyroEnableCalls, 0);
+    harness.adapter.options.onGyroStateChange("available");
+    assert.deepEqual(harness.app.gyro.pluginStates, ["available"]);
+    assert.equal(harness.adapter.gyroEnableCalls, 1);
   } finally {
     await harness.cleanup();
   }
