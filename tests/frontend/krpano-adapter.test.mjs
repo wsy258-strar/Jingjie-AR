@@ -160,28 +160,52 @@ test("reduced motion 场景不输出热点循环，但保留可点击热点", ()
   assert.match(xml, /onclick="stoptween\(caller\.scale\); stoptween\(caller\.alpha\); stoptween\(caller\.oy\); js\(JingjieARHotspotBridge\(1\)\);"/);
 });
 
-test("场景 XML 注册 Gyro2 且默认由页面控制启用", () => {
+test("场景 XML 注册 Gyro2 生命周期回调且默认由页面控制启用", () => {
   const xml = buildSceneXml(scene);
   assert.match(xml, /<plugin name="gyro" devices="html5" keep="true"/);
   assert.match(xml, /url="\/assets\/krp\/plugins\/gyro2\.js"/);
   assert.match(xml, /enabled="false"/);
+  assert.match(xml, /onavailable="js\(JingjieARGyroBridge\(1\)\);"/);
+  assert.match(xml, /onunavailable="js\(JingjieARGyroBridge\(0\)\);"/);
+  assert.match(xml, /onenable="js\(JingjieARGyroBridge\(2\)\);"/);
+  assert.match(xml, /ondisable="js\(JingjieARGyroBridge\(3\)\);"/);
 });
 
-test("Gyro2 适配器调用插件并读取可用性", () => {
+test("Gyro2 适配器通过 enabled 属性启停并转发生命周期", async () => {
+  const previousEmbedpano = globalThis.embedpano;
   const calls = [];
-  const adapter = new KrpanoAdapter({ targetId: "panorama" });
-  adapter.player = {
+  const states = [];
+  const player = {
     get(key) {
       assert.equal(key, "plugin[gyro].isavailable");
       return true;
     },
     call(command) { calls.push(command); }
   };
+  globalThis.embedpano = (options) => options.onready(player);
 
-  adapter.enableGyro();
-  adapter.disableGyro();
-  assert.deepEqual(calls, ["gyro.enable();", "gyro.disable();"]);
-  assert.equal(adapter.isGyroAvailable(), true);
+  try {
+    const adapter = new KrpanoAdapter({
+      targetId: "panorama",
+      onGyroStateChange: (state) => states.push(state)
+    });
+    await adapter.initialize();
+    adapter.enableGyro();
+    adapter.disableGyro();
+    globalThis.JingjieARGyroBridge(1);
+    globalThis.JingjieARGyroBridge(2);
+    globalThis.JingjieARGyroBridge(3);
+    globalThis.JingjieARGyroBridge(0);
+    assert.deepEqual(calls, [
+      "set(plugin[gyro].enabled,true);",
+      "set(plugin[gyro].enabled,false);"
+    ]);
+    assert.deepEqual(states, ["available", "enabled", "disabled", "unavailable"]);
+    assert.equal(adapter.isGyroAvailable(), true);
+  } finally {
+    if (previousEmbedpano === undefined) delete globalThis.embedpano;
+    else globalThis.embedpano = previousEmbedpano;
+  }
 });
 
 test("场景 XML 将 WebVR 可用性和进出事件桥接到适配层", () => {
