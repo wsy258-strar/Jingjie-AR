@@ -24,52 +24,7 @@ try {
 }
 process.once("exit", () => rmSync(loaded.target, { recursive: true, force: true }));
 
-const { GyroController, isMobileDevice } = loaded.module;
-
-test("移动设备判定优先采用 Client Hints 并回退到受限 UA", () => {
-  assert.equal(isMobileDevice({
-    userAgentData: { mobile: false },
-    userAgent: "Mozilla/5.0 (Linux; Android 14)"
-  }), false);
-  assert.equal(isMobileDevice({
-    userAgentData: { mobile: true },
-    userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
-  }), true);
-  assert.equal(isMobileDevice({
-    userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
-  }), false);
-  for (const userAgent of ["Android", "iPhone", "iPad", "iPod"])
-    assert.equal(isMobileDevice({ userAgent }), true, `${userAgent} 应识别为移动设备`);
-  assert.equal(isMobileDevice(undefined), false);
-});
-
-test("PC 插件 unavailable 静默降级", () => {
-  let denied = 0;
-  const controller = new GyroController({
-    adapter: { enableGyro() {}, disableGyro() {} },
-    deviceOrientation: undefined,
-    deviceMotion: undefined,
-    notifyUnavailable: false,
-    onDenied: () => { denied += 1; }
-  });
-
-  assert.equal(controller.handlePluginState("unavailable"), false);
-  assert.equal(denied, 0);
-});
-
-test("PC 策略不抑制显式权限拒绝提示", async () => {
-  let denied = 0;
-  const controller = new GyroController({
-    adapter: { enableGyro() {}, disableGyro() {} },
-    deviceOrientation: { requestPermission: async () => "denied" },
-    deviceMotion: undefined,
-    notifyUnavailable: false,
-    onDenied: () => { denied += 1; }
-  });
-
-  assert.equal(await controller.requestFromGesture(), false);
-  assert.equal(denied, 1);
-});
+const { GyroController } = loaded.module;
 
 test("iOS 同一页面只申请一次", async () => {
   let requests = 0;

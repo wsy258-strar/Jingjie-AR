@@ -1,21 +1,13 @@
-export function isMobileDevice(navigatorObject = globalThis.navigator) {
-  if (typeof navigatorObject?.userAgentData?.mobile === "boolean")
-    return navigatorObject.userAgentData.mobile;
-  return /Android|iPhone|iPad|iPod/i.test(navigatorObject?.userAgent || "");
-}
-
 export class GyroController {
   constructor({
     adapter,
     deviceOrientation = globalThis.DeviceOrientationEvent,
     deviceMotion = globalThis.DeviceMotionEvent,
-    notifyUnavailable = true,
     onDenied = () => {}
   } = {}) {
     this.adapter = adapter;
     this.deviceOrientation = deviceOrientation;
     this.deviceMotion = deviceMotion;
-    this.notifyUnavailable = Boolean(notifyUnavailable);
     this.onDenied = typeof onDenied === "function" ? onDenied : () => {};
     this.permissionSources = [deviceOrientation, deviceMotion].filter(
       (source) => typeof source?.requestPermission === "function"
@@ -97,7 +89,7 @@ export class GyroController {
         this.adapter.disableGyro();
         this.gyroEnabled = false;
       }
-      if (this.notifyUnavailable) this.notifyDeniedOnce();
+      this.notifyDeniedOnce();
       return false;
     }
     if (state === "enabled") {

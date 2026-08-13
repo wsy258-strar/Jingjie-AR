@@ -4,7 +4,7 @@ import { AuthSession } from "./auth-session.js";
 import { VisitorSession } from "./visitor-session.js";
 import { KrpanoAdapter } from "./krpano-adapter.js";
 import { ArtworkModal } from "./artwork-modal.js";
-import { GyroController, isMobileDevice } from "./gyro-controller.js";
+import { GyroController } from "./gyro-controller.js";
 import { MuseumLifecycle } from "./museum-lifecycle.js";
 import { ModalFocusManager } from "./modal-focus.js";
 import { MuseumUiState } from "./museum-ui-state.js";
@@ -182,7 +182,6 @@ export class MuseumApp {
     });
     this.gyro = new GyroController({
       adapter: this.adapter,
-      notifyUnavailable: isMobileDevice(window.navigator),
       onDenied: () => notify("未能启用陀螺仪，仍可拖动浏览")
     });
     gyroController = this.gyro;
