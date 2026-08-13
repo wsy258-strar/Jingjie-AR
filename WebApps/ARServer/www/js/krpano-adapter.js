@@ -36,6 +36,7 @@ function isSupportedViewMode(mode) {
 let hotspotBridge = null;
 let webVrBridge = null;
 let sceneEventBridge = null;
+let gyroBridge = null;
 
 const WEBVR_EVENTS = Object.freeze({
   0: "unavailable",
@@ -47,6 +48,13 @@ const WEBVR_EVENTS = Object.freeze({
 const SCENE_EVENTS = Object.freeze({
   0: "preview-visible",
   1: "complete"
+});
+
+const GYRO_EVENTS = Object.freeze({
+  0: "unavailable",
+  1: "available",
+  2: "enabled",
+  3: "disabled"
 });
 
 globalThis.JingjieARHotspotBridge = function (index) {
@@ -63,6 +71,11 @@ globalThis.JingjieARSceneBridge = function (eventCode, generation) {
   const requestedGeneration = Number(generation);
   if (type && Number.isFinite(requestedGeneration) && sceneEventBridge)
     sceneEventBridge({ type, generation: requestedGeneration });
+};
+
+globalThis.JingjieARGyroBridge = function (eventCode) {
+  const event = GYRO_EVENTS[Number(eventCode)];
+  if (event && gyroBridge) gyroBridge(event);
 };
 
 export function xmlEscape(value) {
@@ -168,6 +181,10 @@ export function buildSceneXml(
     ' onexitvr="js(JingjieARWebVrBridge(3));" />',
     '<plugin name="gyro" devices="html5" keep="true"',
     ' url="/assets/krp/plugins/gyro2.js" enabled="false"',
+    ' onavailable="js(JingjieARGyroBridge(1));"',
+    ' onunavailable="js(JingjieARGyroBridge(0));"',
+    ' onenable="js(JingjieARGyroBridge(2));"',
+    ' ondisable="js(JingjieARGyroBridge(3));"',
     ' camroll="true" friction="0.5" />',
     '<events name="jingjie_scene_events"',
     ' onpreviewcomplete="js(JingjieARSceneBridge(0,', sceneGeneration, '));"',
@@ -195,6 +212,7 @@ export class KrpanoAdapter {
     onSceneEvent = () => {},
     reducedMotion = false,
     onVrStateChange = () => {},
+    onGyroStateChange = () => {},
     vrEnterTimeoutMs = 5000,
     setTimeoutFn = (callback, delay) => globalThis.setTimeout(callback, delay),
     clearTimeoutFn = (timerId) => globalThis.clearTimeout(timerId)
@@ -214,6 +232,8 @@ export class KrpanoAdapter {
     this.normalView = null;
     this.reducedMotion = Boolean(reducedMotion);
     this.onVrStateChange = typeof onVrStateChange === "function" ? onVrStateChange : () => {};
+    this.onGyroStateChange = typeof onGyroStateChange === "function"
+      ? onGyroStateChange : () => {};
     this.vrState = "unknown";
     this.vrEnterRequest = null;
     this.vrEnterTimeoutMs = Number.isFinite(Number(vrEnterTimeoutMs)) && Number(vrEnterTimeoutMs) > 0
@@ -252,6 +272,7 @@ export class KrpanoAdapter {
               if (hotspot) this.onHotspot(hotspot);
             };
             webVrBridge = (event) => this.handleVrEvent(event);
+            gyroBridge = (event) => this.onGyroStateChange(event);
             sceneEventBridge = (event) => {
               if (event.generation === this.latestGeneration) this.onSceneEvent(event);
             };
@@ -307,13 +328,13 @@ export class KrpanoAdapter {
 
   enableGyro() {
     if (!this.player || typeof this.player.call !== "function") return false;
-    this.player.call("gyro.enable();");
+    this.player.call("set(plugin[gyro].enabled,true);");
     return true;
   }
 
   disableGyro() {
     if (!this.player || typeof this.player.call !== "function") return false;
-    this.player.call("gyro.disable();");
+    this.player.call("set(plugin[gyro].enabled,false);");
     return true;
   }
 

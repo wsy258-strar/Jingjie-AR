@@ -4,7 +4,7 @@ import { AuthSession } from "./auth-session.js";
 import { VisitorSession } from "./visitor-session.js";
 import { KrpanoAdapter } from "./krpano-adapter.js";
 import { ArtworkModal } from "./artwork-modal.js";
-import { GyroController } from "./gyro-controller.js";
+import { GyroController, isMobileDevice } from "./gyro-controller.js";
 import { MuseumLifecycle } from "./museum-lifecycle.js";
 import { ModalFocusManager } from "./modal-focus.js";
 import { MuseumUiState } from "./museum-ui-state.js";
@@ -149,9 +149,6 @@ export class MuseumApp {
       audio: element("scene-audio"),
       button: element("music-toggle")
     });
-    this.gyroAutoEnabledGeneration = null;
-    this.gyroAutoEnablingGeneration = null;
-    this.gyroGestureRequested = false;
     this.sceneLoadTimer = null;
     this.pendingSceneLoad = null;
     this.sceneDissolve = new SceneDissolve({
@@ -166,6 +163,7 @@ export class MuseumApp {
       onVrStateChange: (state) => {
         element("museum-fullscreen-root").classList.toggle("is-vr-mode", state === "entered");
       },
+      onGyroStateChange: (state) => this.gyro?.handlePluginState(state),
       onSceneEvent: ({ type, generation }) => {
         if (generation !== this.sceneGeneration) return;
         if (type === "preview-visible") {
@@ -173,38 +171,21 @@ export class MuseumApp {
           this.adapter.confirmScene?.(generation);
           this.pendingSceneLoad = null;
           this.sceneDissolve.markPreviewVisible(generation);
-          this.autoEnableGyroAfterSceneLoad(generation);
         } else if (type === "complete") {
           this.clearSceneLoadTimeout(generation);
           this.adapter.confirmScene?.(generation);
           this.pendingSceneLoad = null;
           this.sceneDissolve.complete(generation);
-          this.autoEnableGyroAfterSceneLoad(generation);
         }
       },
       reducedMotion
     });
     this.gyro = new GyroController({
       adapter: this.adapter,
+      notifyUnavailable: isMobileDevice(window.navigator),
       onDenied: () => notify("未能启用陀螺仪，仍可拖动浏览")
     });
     gyroController = this.gyro;
-  }
-
-  autoEnableGyroAfterSceneLoad(generation = this.sceneGeneration) {
-    if (generation !== this.sceneGeneration ||
-        this.gyroAutoEnabledGeneration === generation ||
-        this.gyroAutoEnablingGeneration === generation) return;
-    this.gyroAutoEnablingGeneration = generation;
-    Promise.resolve(this.gyro.autoEnable()).then((enabled) => {
-      if (this.gyroAutoEnablingGeneration === generation)
-        this.gyroAutoEnablingGeneration = null;
-      if (enabled && generation === this.sceneGeneration)
-        this.gyroAutoEnabledGeneration = generation;
-    }, () => {
-      if (this.gyroAutoEnablingGeneration === generation)
-        this.gyroAutoEnablingGeneration = null;
-    });
   }
 
   clearSceneLoadTimeout(generation = null) {
@@ -245,11 +226,8 @@ export class MuseumApp {
   }
 
   async requestGyroFromGesture() {
-    if (this.gyroGestureRequested) return false;
     try {
-      const enabled = await this.gyro.requestFromGesture();
-      if (enabled) this.gyroGestureRequested = true;
-      return enabled;
+      return await this.gyro.requestFromGesture();
     } catch (_) {
       return false;
     }
@@ -334,7 +312,6 @@ export class MuseumApp {
         if (this.pendingSceneLoad?.generation === generation) this.pendingSceneLoad = null;
         return false;
       }
-      this.autoEnableGyroAfterSceneLoad(generation);
       this.currentScene = scene;
       this.markCurrentScene(scene.sceneId);
       this.configureMusic(scene.music);

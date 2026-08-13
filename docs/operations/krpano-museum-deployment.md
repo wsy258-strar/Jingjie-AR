@@ -205,6 +205,7 @@ proxy_read_timeout 65s;
 
 ```nginx
 add_header Content-Security-Policy "default-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; connect-src 'self'; worker-src 'self' blob:" always;
+add_header Permissions-Policy "accelerometer=(self), gyroscope=(self)" always;
 ```
 
 站点配置 `/etc/nginx/sites-available/jingjie-ar`：
@@ -281,7 +282,8 @@ server {
 set -euo pipefail
 sudo nginx -t
 sudo systemctl reload nginx
-curl -fsSI https://jingjiear.cn/index.html | grep -Ei 'cache-control|content-security-policy'
+curl -fsSI https://jingjiear.cn/index.html \
+  | grep -Ei 'cache-control|content-security-policy|permissions-policy'
 curl -fsSI https://jingjiear.cn/assets/pano/15949056/preview.jpg | grep -Ei 'cache-control|expires'
 curl -fsSI https://jingjiear.cn/api/scenes | grep -Ei 'cache-control|content-security-policy'
 ```
@@ -289,7 +291,16 @@ curl -fsSI https://jingjiear.cn/api/scenes | grep -Ei 'cache-control|content-sec
 ## 8. 上线验收与压测
 
 先验证 HTTPS API，再用浏览器检查场景切换、热点、作品弹窗、登录、点赞、评论、音乐与
-手机方向控制。隔离环境可运行严格的八步全链路脚本：
+手机方向控制。
+
+陀螺仪必须在真实移动设备上补充以下验收，任何失败都应保留手指拖动且不出现未处理异常：
+
+- Android Chrome：进入全景并等待 Gyro2 `available` 后应自动启用，转动手机改变视角，不应期待或依赖 iOS 风格权限弹窗。
+- Android Chrome：在站点设置中关闭“动作传感器”后重新进入，页面最多提示一次，手指拖动仍可浏览。
+- iOS Safari：首次触摸全景时申请方向和运动权限；允许后转动手机改变视角，拒绝后最多提示一次且保留拖动。
+- Android Chrome 与 iOS Safari：打开作品、登录或简介弹窗时陀螺仪暂停，关闭最后一个弹窗后恢复；手指拖动始终可调整 Gyro2 偏移。
+
+隔离环境可运行严格的八步全链路脚本：
 
 ```bash
 set -euo pipefail

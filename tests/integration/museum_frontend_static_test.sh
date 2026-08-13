@@ -5,6 +5,7 @@ root="${1:-WebApps/ARServer/www}"
 index="$root/index.html"
 css="$root/css/museum.css"
 app="$root/js/museum-app.js"
+deployment_doc="docs/operations/krpano-museum-deployment.md"
 
 grep -Fq 'type="module"' "$index"
 grep -Fq '/assets/krp/runtime/player_krp_v2.js' "$index"
@@ -28,6 +29,10 @@ grep -Fq 'class="police-filing-icon"' "$index"
 grep -Fq 'src="/assets/filing/beian_icon.png"' "$index"
 grep -Fq '您的ICP备案号' "$index"
 grep -Fq '您的公安联网备案号' "$index"
+grep -Fq 'Permissions-Policy "accelerometer=(self), gyroscope=(self)" always;' "$deployment_doc"
+grep -Fq 'permissions-policy' "$deployment_doc"
+grep -Fq 'Android Chrome' "$deployment_doc"
+grep -Fq 'iOS Safari' "$deployment_doc"
 
 for id in artwork-gallery-stage artwork-image artwork-prev artwork-next \
   artwork-image-count artwork-zoom-in artwork-zoom-out artwork-reset \
