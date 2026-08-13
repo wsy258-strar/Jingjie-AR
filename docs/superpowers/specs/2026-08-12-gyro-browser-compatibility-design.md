@@ -62,6 +62,12 @@
 | 权限拒绝、传感器缺失或插件不可用 | 提示一次并降级为手指拖动 |
 | 非 HTTPS 或被 Permissions Policy 阻止 | 不启用，保留手指拖动并提供可诊断状态 |
 
+### 桌面端提示策略
+
+PC 浏览器缺少方向传感器属于正常能力边界。桌面端收到 Gyro2 `unavailable` 时静默降级为手指拖动，不显示“未能启用陀螺仪”提示；移动端收到同一事件时仍最多提示一次，以便用户检查系统传感器或站点权限。浏览器明确拒绝或异常终止方向/运动权限请求时仍提示一次。
+
+移动设备判定由 `MuseumApp` 注入 `GyroController`，优先读取 `navigator.userAgentData.mobile`；该字段不可用时，仅回退识别 Android、iPhone、iPad 和 iPod 的 User-Agent。不得使用视口宽度或触摸能力单独判定，以免窄窗口 PC 或触屏笔记本误报。
+
 页面本身是顶层同源页面，不新增 iframe 逻辑。生产 Nginx 应允许本站使用 `accelerometer` 和 `gyroscope`，部署文档补充相应 `Permissions-Policy` 响应头与真机检查命令。
 
 ## 测试与验收
@@ -75,6 +81,6 @@
 5. `DeviceMotionEvent` 与 `DeviceOrientationEvent` 双权限请求、拒绝和异常分支。
 6. suspend/resume、场景切换与 modal 生命周期不回归。
 7. 不支持设备不会抛出未处理异常，且不会重复提示。
+8. 桌面端 Gyro2 `unavailable` 静默降级，移动端 `unavailable` 与权限拒绝仍最多提示一次。
 
 真机验收：使用 `https://jingjiear.cn` 在 Android Chrome 与至少一台 iOS Safari 测试；进入后转动手机应改变全景视角，拖动仍可调整偏移，打开作品弹窗时陀螺仪暂停，关闭后恢复。Android 站点设置中的“动作传感器”被禁用时应正常降级。
-
