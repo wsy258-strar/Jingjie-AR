@@ -32,7 +32,7 @@
 - Produces: `new KrpanoAdapter({ onGyroStateChange(state) })`；`state` 为上述四个字符串之一。
 - Produces: `enableGyro(): boolean` 与 `disableGyro(): boolean`，分别执行 `set(plugin[gyro].enabled,true);` 和 `set(plugin[gyro].enabled,false);`。
 
-- [ ] **Step 1: 写入生命周期和公开 API 的失败测试**
+- [x] **Step 1: 写入生命周期和公开 API 的失败测试**
 
 在 `tests/frontend/krpano-adapter.test.mjs` 中将现有 Gyro2 测试改为：
 
@@ -85,7 +85,7 @@ test("Gyro2 适配器通过 enabled 属性启停并转发生命周期", async ()
 });
 ```
 
-- [ ] **Step 2: 运行测试并确认按预期失败**
+- [x] **Step 2: 运行测试并确认按预期失败**
 
 Run:
 
@@ -95,7 +95,7 @@ Run:
 
 Expected: FAIL，缺少四个 XML 生命周期属性、`JingjieARGyroBridge`，且实际命令仍为 `gyro.enable();` / `gyro.disable();`。
 
-- [ ] **Step 3: 实现最小生命周期桥与启停命令**
+- [x] **Step 3: 实现最小生命周期桥与启停命令**
 
 在适配器模块级增加：
 
@@ -142,13 +142,13 @@ this.player.call("set(plugin[gyro].enabled,true);");
 this.player.call("set(plugin[gyro].enabled,false);");
 ```
 
-- [ ] **Step 4: 运行适配器测试并确认通过**
+- [x] **Step 4: 运行适配器测试并确认通过**
 
 Run: `/tmp/node-v20.19.5-linux-x64/bin/node --test tests/frontend/krpano-adapter.test.mjs`
 
 Expected: PASS，适配器测试 0 失败。
 
-- [ ] **Step 5: 提交独立适配器改动**
+- [x] **Step 5: 提交独立适配器改动**
 
 ```bash
 git add WebApps/ARServer/www/js/krpano-adapter.js tests/frontend/krpano-adapter.test.mjs
@@ -166,7 +166,7 @@ git commit -m "修复 Gyro2 生命周期桥接与启停接口"
 - Consumes: `handlePluginState(state)`，`state` 为 `available | unavailable | enabled | disabled`。
 - Produces: `requestFromGesture(): Promise<boolean>`、`autoEnable(): Promise<boolean>`、`enableIfAllowed(): boolean`、`suspend(reason): void`、`resume(reason): boolean`、`destroy(): void`。
 
-- [ ] **Step 1: 写权限顺序、双权限和降级分支的失败测试**
+- [x] **Step 1: 写权限顺序、双权限和降级分支的失败测试**
 
 在 `tests/frontend/gyro-controller.test.mjs` 中增加用例，使用记录 `enableGyro` / `disableGyro` 次数的真实小型适配器替身，逐项断言：
 
@@ -216,13 +216,13 @@ test("方向与运动权限在同一手势内均通过后才启用", async () =>
 
 再增加三个独立用例：任一权限返回 `denied`、任一权限抛异常、`unavailable` 后 suspend/resume 不会重启；每个分支断言 `onDenied` 总计只调用一次且没有未处理拒绝。
 
-- [ ] **Step 2: 运行测试并确认旧逻辑失败**
+- [x] **Step 2: 运行测试并确认旧逻辑失败**
 
 Run: `/tmp/node-v20.19.5-linux-x64/bin/node --test tests/frontend/gyro-controller.test.mjs`
 
 Expected: FAIL，旧控制器会在插件未 available 时跳过权限申请，不支持 `deviceMotion` / `handlePluginState`，且 Android 无法等待生命周期事件。
 
-- [ ] **Step 3: 实现正交状态与单次提示**
+- [x] **Step 3: 实现正交状态与单次提示**
 
 控制器必须保存下列状态：
 
@@ -240,13 +240,13 @@ this.permissionRequest = null;
 
 `requestFromGesture()` 从两个事件构造器收集所有 `requestPermission`，用 `Promise.all` 在当前手势调用栈中启动请求；只有所有结果均为 `granted` 才设置 `permissionGranted=true`。`handlePluginState("available")` 设置 `pluginAvailable=true` 并调用 `enableIfAllowed()`；`unavailable` 设置为 false、关闭已启用插件并调用幂等 `notifyDeniedOnce()`；`enabled/disabled` 只同步 `gyroEnabled`。`enableIfAllowed()` 仅在未销毁、权限通过、插件 available、无暂停原因时写 enabled 属性。
 
-- [ ] **Step 4: 运行控制器测试并确认通过**
+- [x] **Step 4: 运行控制器测试并确认通过**
 
 Run: `/tmp/node-v20.19.5-linux-x64/bin/node --test tests/frontend/gyro-controller.test.mjs`
 
 Expected: PASS，控制器测试 0 失败。
 
-- [ ] **Step 5: 提交独立状态机改动**
+- [x] **Step 5: 提交独立状态机改动**
 
 ```bash
 git add WebApps/ARServer/www/js/gyro-controller.js tests/frontend/gyro-controller.test.mjs
@@ -264,7 +264,7 @@ git commit -m "修复陀螺仪权限与插件就绪竞态"
 - Consumes: `GyroController.handlePluginState(state)` 与 `requestFromGesture()`。
 - Produces: 场景图片事件只控制 dissolve；Gyro2 生命周期独立控制陀螺仪。
 
-- [ ] **Step 1: 写事件接线和去竞态失败测试**
+- [x] **Step 1: 写事件接线和去竞态失败测试**
 
 扩展 `KrpanoAdapter` / `GyroController` 测试桩，使控制器记录 `pluginStates`；将旧的“预览可见后重试”两个用例替换为：
 
@@ -299,13 +299,13 @@ test("插件未 available 时首次 panorama pointerdown 仍转发权限申请",
 
 保留并调整 transient-ui、modal、pagehide 用例，确保 pause/resume/destroy 次数不回归。
 
-- [ ] **Step 2: 运行接线测试并确认按预期失败**
+- [x] **Step 2: 运行接线测试并确认按预期失败**
 
 Run: `/tmp/node-v20.19.5-linux-x64/bin/node --test tests/frontend/museum-app-wiring.test.mjs`
 
 Expected: FAIL，适配器未接收 `onGyroStateChange`，应用仍从 scene preview/complete 和 generation 状态触发 `autoEnable()`。
 
-- [ ] **Step 3: 删除图片加载触发并接入插件事件**
+- [x] **Step 3: 删除图片加载触发并接入插件事件**
 
 从 `MuseumApp` 删除 `gyroAutoEnabledGeneration`、`gyroAutoEnablingGeneration`、`gyroGestureRequested` 与 `autoEnableGyroAfterSceneLoad()`；删除 `onSceneEvent` 两个分支中的自动启用调用。适配器配置加入：
 
@@ -315,7 +315,7 @@ onGyroStateChange: (state) => this.gyro?.handlePluginState(state),
 
 `requestGyroFromGesture()` 直接捕获控制器错误并返回布尔值，不在应用层缓存成功状态；单次权限请求由控制器自身保证。
 
-- [ ] **Step 4: 运行接线与生命周期回归测试**
+- [x] **Step 4: 运行接线与生命周期回归测试**
 
 Run:
 
@@ -329,7 +329,7 @@ Run:
 
 Expected: PASS，4 个测试文件 0 失败。
 
-- [ ] **Step 5: 提交应用接线改动**
+- [x] **Step 5: 提交应用接线改动**
 
 ```bash
 git add WebApps/ARServer/www/js/museum-app.js tests/frontend/museum-app-wiring.test.mjs
@@ -346,7 +346,7 @@ git commit -m "改为 Gyro2 生命周期驱动应用接线"
 - Produces: Nginx 响应头 `Permissions-Policy: accelerometer=(self), gyroscope=(self)`。
 - Produces: 部署后响应头检查命令和 Android/iOS 真机检查清单。
 
-- [ ] **Step 1: 写部署文档静态契约失败测试**
+- [x] **Step 1: 写部署文档静态契约失败测试**
 
 在 `tests/integration/museum_frontend_static_test.sh` 末尾增加：
 
@@ -358,13 +358,13 @@ grep -Fq "Android Chrome" "$deployment_doc"
 grep -Fq "iOS Safari" "$deployment_doc"
 ```
 
-- [ ] **Step 2: 运行静态测试并确认失败**
+- [x] **Step 2: 运行静态测试并确认失败**
 
 Run: `bash tests/integration/museum_frontend_static_test.sh`
 
 Expected: FAIL，部署文档尚无 Permissions-Policy 配置和真机检查项。
 
-- [ ] **Step 3: 更新 Nginx 与验收文档**
+- [x] **Step 3: 更新 Nginx 与验收文档**
 
 在 `jingjie-ar-csp.conf` 相邻片段加入：
 
@@ -381,7 +381,7 @@ curl -fsSI https://jingjiear.cn/index.html \
 
 真机清单明确 Android Chrome 自动启用、关闭“动作传感器”后的拖动降级、iOS Safari 首触授权、拒绝后的单次提示，以及作品弹窗打开暂停/关闭恢复。
 
-- [ ] **Step 4: 执行完整自动回归**
+- [x] **Step 4: 执行完整自动回归**
 
 Run:
 
@@ -393,7 +393,7 @@ git diff --check
 
 Expected: 所有前端测试 PASS，静态集成测试退出码 0，`git diff --check` 无输出。
 
-- [ ] **Step 5: 提交部署与验收文档**
+- [x] **Step 5: 提交部署与验收文档**
 
 ```bash
 git add docs/operations/krpano-museum-deployment.md tests/integration/museum_frontend_static_test.sh
